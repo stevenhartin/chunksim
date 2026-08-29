@@ -501,9 +501,18 @@ negotiable and are pinned by `tests/test_packaging.py`:
 `derive/pipeline.py` is excluded for an unrelated reason worth keeping apart: three tests
 monkeypatch `_MAX_AREA_PASSES`, and a compiled module's attributes are read-only.
 
-**The Windows payload is pure Python and that is correct, not a gap.** `packaging/build_windows.py`
-builds on Linux, and a Linux toolchain cannot produce Windows extension modules; compiling it would
-need a Windows build host. The same source, without the speed-up.
+**The Windows installer ships compiled**, which is where this actually reaches a user.
+`packaging/build.bat` runs the whole build *on a Windows machine*, so the wheel is built there and
+compiles there — `build_windows.py` passes `CHUNKSIM_COMPILE=1` for chunksim's own wheel and not for
+`osrs-dps`'s, whose hot loop is a separate question nobody has measured. `build.bat` checks for
+`mypy` and `setuptools` up front rather than letting a missing toolchain surface as a compiler error
+three minutes into the payload, and `/nocompile` is how a build host without a C toolchain says it
+meant to ship interpreted.
+
+**`verify_payload` treats a payload with no `.pyd` as a build failure**, for the reason it already
+treats a missing GPL source archive as one: compiling fails *silently* when it fails to apply — the
+`.py` beside the missing extension imports and answers correctly, just slower — so nothing but that
+check notices the installer being shipped is not the one that was measured.
 
 `pyproject-build` is **not part of the development loop.** Three reasons left to build a wheel:
 shipping to another machine, proving the packaged `gui/resources` shipped
@@ -520,6 +529,7 @@ packaging\build.bat                                    # asks for a version, the
 packaging\build.bat /version 0.2.0                     # bump without asking
 packaging\build.bat /keep                              # build what is there, no bump
 packaging\build.bat /nodps                             # without the DPS calculator
+packaging\build.bat /nocompile                         # ship interpreted, not mypyc-compiled
 packaging\build.bat /payload                           # stop before Inno Setup
 
 pyproject-build && python packaging/build_windows.py   # the same, by hand

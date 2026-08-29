@@ -325,3 +325,61 @@ def test_a_compiled_frozen_dataclass_can_still_be_unpickled() -> None:
         assert original.__reduce__()[1] == tuple(
             getattr(original, name) for name in original.__dataclass_fields__
         )
+
+
+def test_the_windows_installer_ships_compiled_unless_told_not_to() -> None:
+    """**The installer is where compiling actually reaches a user.**
+
+    `build.bat` runs the whole build on a Windows machine, so the wheel it
+    ships is built there and can compile there - which is the difference
+    between a released installer that is 22% faster a roll and one that is
+    not. The flag exists for a build host without a C toolchain, and has to be
+    asked for.
+    """
+    bat = (PROJECT / "packaging" / "build.bat").read_text(encoding="utf-8")
+    builder = (PROJECT / "packaging" / "build_windows.py").read_text(encoding="utf-8")
+
+    assert '"%~1"=="/nocompile"' in bat
+    assert 'set "NOCOMPILE=--no-compile"' in bat
+    assert "%DPSARG% %NOCOMPILE%" in bat, "the flag has to reach build_windows.py"
+    # Named before the build starts rather than surfacing as a compiler error
+    # three minutes into the payload - the same discipline the `build` check
+    # above it follows.
+    assert "import mypyc" in bat
+    assert "--no-compile" in builder
+
+
+def test_only_chunksims_own_wheel_is_compiled() -> None:
+    """The measurement behind `setup.py`'s module list is this project's.
+    Compiling `osrs-dps` on the strength of it would be a guess about someone
+    else's hot loop, which is a question to ask separately."""
+    builder = (PROJECT / "packaging" / "build_windows.py").read_text(encoding="utf-8")
+
+    assert "build_dists(PROJECT, compile_ext=not args.no_compile)" in builder
+    assert "build_dists(args.dps_checkout)" in builder
+
+
+def test_a_payload_that_lost_its_extensions_is_a_build_failure() -> None:
+    """**Compiling fails silently when it fails to *apply*.** The `.py` beside
+    a missing extension imports perfectly well and answers correctly - just
+    slower - so nothing but a check like this notices that the installer being
+    shipped is not the one that was measured.
+
+    The same reasoning `verify_payload` already applies to the GPL source
+    archives: some things are wrong in a way that looks fine.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_bw", PROJECT / "packaging" / "build_windows.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    source = (PROJECT / "packaging" / "build_windows.py").read_text(encoding="utf-8")
+    assert 'rglob("*.pyd")' in source, "extensions are .pyd on Windows"
+    assert "compiled and not list" in source
+    # And the check is skippable exactly once, by the flag that says so.
+    assert "compiled: bool = True" in source
+    assert "compiled=not args.no_compile" in source

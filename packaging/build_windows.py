@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -69,7 +70,7 @@ DEFAULT_DPS_CHECKOUT = PROJECT.parent / "osrs-dps"
 SOURCE_DIR_NAME = "source"
 
 
-def build_dists(checkout: Path) -> tuple[Path, Path]:
+def build_dists(checkout: Path, *, compile_ext: bool = False) -> tuple[Path, Path]:
     """Build a wheel and an sdist from `checkout`, returning both.
 
     **One invocation, so the two correspond.** A source archive that does not
@@ -79,21 +80,50 @@ def build_dists(checkout: Path) -> tuple[Path, Path]:
     `build` is a module in some environments and only a `pyproject-build`
     script in others - it is commonly installed with pipx, which puts the
     command on PATH and the module in a venv this interpreter cannot see.
+
+    **`compile_ext` builds the mypyc extensions**, which is what makes the
+    shipped installer 22% faster a roll than the same source interpreted - see
+    `setup.py` for what is compiled and what deliberately is not. Two things
+    about it are not free:
+
+    - **Isolation has to go off.** A build backend in its own venv has no
+      `mypy`, and adding one to `[build-system] requires` would make *every*
+      build - including the pure one - fetch a type checker.
+    - **The wheel stops being `py3-none-any`.** It becomes specific to this
+      interpreter and this platform, which is exactly right for a payload
+      built beside the interpreter it ships with, and exactly wrong for
+      anything else. Nothing else here asks for it.
     """
     out = checkout / "dist"
     before = set(out.glob("*")) if out.is_dir() else set()
-    attempts: list[list[str]] = [[sys.executable, "-m", "build", "--outdir", str(out), str(checkout)]]
+    env = dict(os.environ)
+    isolation: list[str] = []
+    if compile_ext:
+        env["CHUNKSIM_COMPILE"] = "1"
+        isolation = ["--no-isolation"]
+    attempts: list[list[str]] = [
+        [sys.executable, "-m", "build", *isolation, "--outdir", str(out), str(checkout)]
+    ]
     script = shutil.which("pyproject-build")
     if script:
-        attempts.append([script, "--outdir", str(out), str(checkout)])
+        attempts.append([script, *isolation, "--outdir", str(out), str(checkout)])
+    failure = ""
     for command in attempts:
-        result = subprocess.run(command, capture_output=True, text=True)
+        result = subprocess.run(command, capture_output=True, text=True, env=env)
         if result.returncode == 0:
             break
+        failure = (result.stderr or result.stdout or "").strip()[-800:]
     else:
+        extra = (
+            "\n\nCompiling needs a C toolchain (MSVC Build Tools on Windows) and "
+            "`mypy` on this interpreter, and builds without isolation so it can "
+            "see them. Pass /nocompile to build without it.\n" + failure
+            if compile_ext
+            else ""
+        )
         raise SystemExit(
             f"could not build {checkout.name}: install `build` "
-            f"({sys.executable} -m pip install build)"
+            f"({sys.executable} -m pip install build){extra}"
         )
     wheels = sorted(out.glob("*.whl"), key=lambda p: p.stat().st_mtime)
     sdists = sorted(out.glob("*.tar.gz"), key=lambda p: p.stat().st_mtime)
@@ -275,7 +305,7 @@ def launchers() -> None:
     )
 
 
-def verify_payload(*, with_dps: bool) -> list[str]:
+def verify_payload(*, with_dps: bool, compiled: bool = True) -> list[str]:
     """What must be true of the tree, checked rather than assumed."""
     problems: list[str] = []
     required = [
@@ -296,6 +326,17 @@ def verify_payload(*, with_dps: bool) -> list[str]:
         problems.append("no _zstd in the interpreter: derived caches fall back to plain pickle")
     if not sorted((PAYLOAD / "app").glob("chunksim-*.dist-info")):
         problems.append("no .dist-info: the watermark and the update check go quiet")
+    if compiled and not list((PAYLOAD / "app" / "chunksim").rglob("*.pyd")):
+        # **A build failure, not a note**, for the reason the source archives
+        # below are one: an installer that is quietly 22% slower than it should
+        # be is precisely the "subtly wrong" this build is arranged to make
+        # impossible. Compiling is silent when it fails to *apply* - the `.py`
+        # beside the missing extension imports perfectly well - so only a check
+        # like this notices. `/nocompile` says you meant it.
+        problems.append(
+            "no compiled extensions in app/chunksim: the payload would ship "
+            "interpreted (~22% slower a roll). Pass /nocompile if that is intended"
+        )
     if with_dps:
         if not (PAYLOAD / "app" / "osrs_dps" / "data" / "monsters.json").is_file():
             problems.append("osrs_dps is missing its monster data: DPS pricing would refuse")
@@ -322,6 +363,13 @@ def main(argv: list[str] | None = None) -> int:
         "--without-dps", action="store_true",
         help="build without DPS pricing; estimates fall back to the scraped wiki rates",
     )
+    parser.add_argument(
+        "--no-compile", action="store_true",
+        help=(
+            "ship interpreted rather than mypyc-compiled: ~22%% slower a roll, "
+            "and the way to say you meant it when the build host has no C toolchain"
+        ),
+    )
     args = parser.parse_args(argv)
 
     print(f"payload -> {PAYLOAD}")
@@ -329,7 +377,11 @@ def main(argv: list[str] | None = None) -> int:
     python_dir = interpreter(args.python_version)
     print(f"  path file: {point_path_file(python_dir).name}")
 
-    wheel, sdist = build_dists(PROJECT)
+    # **chunksim's own wheel compiles; osrs-dps's does not.** The measurement
+    # behind `setup.py`'s module list is this project's, and compiling a second
+    # package on the strength of it would be a guess - the DPS calculator's hot
+    # loop is its own question, asked separately.
+    wheel, sdist = build_dists(PROJECT, compile_ext=not args.no_compile)
     sources = {"chunksim": sdist}
     app = application(wheel)
     print(f"  app: {wheel.name}")
@@ -359,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
     # `chunksim.cmd`, not just in the checkout the `.iss` is compiled from.
     shutil.copy2(PROJECT / "packaging" / "chunksim.ico", PAYLOAD / "chunksim.ico")
 
-    problems = verify_payload(with_dps=with_dps)
+    problems = verify_payload(with_dps=with_dps, compiled=not args.no_compile)
     for problem in problems:
         print(f"  ! {problem}", file=sys.stderr)
     total = sum(p.stat().st_size for p in PAYLOAD.rglob("*") if p.is_file())

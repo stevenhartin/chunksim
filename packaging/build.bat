@@ -6,6 +6,7 @@ rem      packaging\build.bat /version 0.2.0   bump to 0.2.0 without asking
 rem      packaging\build.bat /keep            build the current version, no bump
 rem      packaging\build.bat /payload         stop after the payload, skip Inno Setup
 rem      packaging\build.bat /nodps          build without the DPS calculator
+rem      packaging\build.bat /nocompile      ship interpreted, not mypyc-compiled
 rem
 rem  Three steps, each a thing that can be *missing* rather than subtly wrong,
 rem  so each is checked and named:
@@ -40,11 +41,13 @@ set "SKIP_INNO="
 set "NEWVER="
 set "KEEP="
 set "DPSARG="
+set "NOCOMPILE="
 :args
 if "%~1"=="" goto :args_done
 if /i "%~1"=="/payload" set "SKIP_INNO=1"
 if /i "%~1"=="/keep" set "KEEP=1"
 if /i "%~1"=="/nodps" set "DPSARG=--without-dps"
+if /i "%~1"=="/nocompile" set "NOCOMPILE=--no-compile"
 if /i "%~1"=="/version" set "NEWVER=%~2"& shift
 shift
 goto :args
@@ -104,8 +107,42 @@ if errorlevel 1 (
         goto :fail
     )
 )
+
+rem  The compiled build needs mypy on this interpreter and a C toolchain for
+rem  it to drive. Both are things that can be *missing* rather than subtly
+rem  wrong, so both are named here instead of surfacing as a compiler error
+rem  three minutes into the payload. `setup.py` says what is compiled and why
+rem  `costing\estimate.py` never is.
+if not defined NOCOMPILE (
+    %PY% -c "import mypyc" >nul 2>&1
+    if errorlevel 1 (
+        echo       installing 'mypy' for the compiled build
+        %PY% -m pip install --quiet mypy
+        if errorlevel 1 (
+            echo ERROR: could not install 'mypy'. Either install it, or build
+            echo        interpreted with: packaging\build.bat /nocompile
+            goto :fail
+        )
+    )
+    %PY% -c "import setuptools" >nul 2>&1
+    if errorlevel 1 (
+        echo       installing 'setuptools' - the compiled build runs without isolation
+        %PY% -m pip install --quiet setuptools
+        if errorlevel 1 (
+            echo ERROR: could not install 'setuptools'. Try /nocompile.
+            goto :fail
+        )
+    )
+    rem  No parentheses in this message: inside a block cmd reads an
+    rem  unescaped `)` as the end of it, and escaping is one more thing
+    rem  to get right for no gain. See the %ProgramFiles(x86)% note above.
+    echo       compiled build: on, via mypyc
+) else (
+    echo       compiled build: OFF - the installer will ship interpreted
+)
+
 echo [2/3] assembling the payload
-%PY% packaging\build_windows.py %DPSARG%
+%PY% packaging\build_windows.py %DPSARG% %NOCOMPILE%
 if errorlevel 1 (
     echo ERROR: the payload is incomplete - see the lines marked ! above.
     goto :fail

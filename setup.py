@@ -51,15 +51,22 @@ any class added to a compiled module that crosses a pickle needs its
 
 ### Windows
 
-`packaging/build_windows.py` builds its payload on Linux, and a Linux
-toolchain cannot produce Windows extension modules. So the Windows payload is
-**pure Python**, and is correct rather than merely acceptable: the same source,
-without the speed-up. Compiling it would need a Windows build host.
+`packaging/build.bat` runs the whole installer build **on a Windows machine**,
+so the wheel it ships is built there and compiles there too - it needs a C
+toolchain (MSVC Build Tools) and `mypy` on the build interpreter, both of which
+`build.bat` checks for and names rather than discovering halfway through.
+
+`build_windows.py` passes `CHUNKSIM_COMPILE=1` and `verify_payload` treats a
+payload with no extension modules as a **build failure**, for the reason that
+file already applies to the GPL source archives: an installer that is quietly
+22% slower than it should be is exactly the "subtly wrong" the build is
+arranged to make impossible. `/nocompile` is the way to say you meant it.
 """
 
 from __future__ import annotations
 
 import os
+import sys
 
 from setuptools import setup
 
@@ -91,7 +98,18 @@ def _ext_modules() -> list:
         return []
     from mypyc.build import mypycify
 
-    return mypycify(list(COMPILED))
+    # **`--python-executable` is not optional here, and the reason is a
+    # portability trap rather than a preference.** `mypycify` reads this
+    # project's own `[tool.mypy]`, which pins `python_executable` to
+    # `.venv/bin/python` so the checker can see pytest's stubs. That path is
+    # relative to the checkout and does not exist on Windows at all, where a
+    # virtualenv puts its interpreter in `Scripts/`. Left alone, a Windows
+    # build fails with `Invalid python executable '.venv/bin/python'` and a
+    # build from anywhere but the checkout root fails the same way.
+    #
+    # The interpreter running the build is the right one to compile against by
+    # definition - it is the one the extension will be imported by.
+    return mypycify([f"--python-executable={sys.executable}", *COMPILED])
 
 
 setup(ext_modules=_ext_modules())
