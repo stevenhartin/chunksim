@@ -1535,6 +1535,86 @@ def test_incremental_pricing_is_the_same_answer_as_pricing_from_scratch(
         assert step_cover.slayer_tasks == full_cover.slayer_tasks
 
 
+@pytest.mark.real_cache
+def test_incremental_training_fights_match_pricing_from_scratch(
+    real_export: ChunkInfo, real_state: tuple[MapState, dict[str, bool]]
+) -> None:
+    """**The same assertion for the damage question**, which is a different
+    table and needs its own.
+
+    `price_combat_incremental` keeps a monster's simulated styles when
+    `fight_signature` holds and the monster has not crossed the ditch, then
+    re-applies the cap and the XP multiplier - neither of which touches the
+    fight - and recomputes the winner over the whole current set. Each of
+    those three is a way to be silently wrong: a stale row, a cap applied to
+    the wrong fight, or a new monster that should have taken a style and did
+    not. So this walks a real sequence and asserts `CombatRate` for
+    `CombatRate` against `price_combat`, and the carried curves against
+    `combat_curve`.
+    """
+    from chunksim.store import cache
+    from chunksim.store.derived_cache import Digests, cached_derive
+    from chunksim.costing.levels import goal_levels, infer_levels
+    from chunksim.costing import combat_xp
+
+    info = real_export
+    state, unlocked = real_state
+    digests = Digests(
+        chunkinfo=cache.file_digest(cache.chunkinfo_source(None, None)),
+        tasks_map=cache.file_digest(cache.blob_path(cache.TASKS_MAP_BLOB_NAME)),
+    )
+    index = dps_bridge.load_monster_index()
+    slayer = frozenset(info.slayer_monsters)
+    from chunksim.model.summary import _mapping
+
+    bosses = frozenset(_mapping(info.code_items, "bossMonsters"))
+
+    held = sorted(unlocked)
+    sequence = [frozenset(held[: len(held) - n]) for n in (4, 3, 2, 1, 0)]
+
+    previous = None
+    checked = 0
+    for chunks in sequence:
+        derived = cached_derive(state, dict.fromkeys(chunks, True), digests)
+        levels = goal_levels(state, derived, infer_levels(state))
+        kit = dps_bridge.assemble_kit(
+            info, levels,
+            items=derived.challenges.available_items,
+            source_index=derived.source_index,
+        )
+        caps = combat_xp.spawn_caps(info, derived)
+        monsters = sorted(combat_xp.farmable_providers(derived, info))
+        full = dps_bridge.price_combat(
+            info, derived.bis.picks, levels, monsters,
+            index=index, kit=kit, slayer_monsters=slayer,
+            boss_monsters=bosses, caps=caps,
+        )
+        step, previous = dps_bridge.price_combat_incremental(
+            info, derived.bis.picks, levels, monsters, previous=previous,
+            index=index, kit=kit, slayer_monsters=slayer,
+            boss_monsters=bosses, caps=caps,
+        )
+
+        assert step == full, f"training fights diverged at {len(chunks)} chunks"
+        for style, rate in full.items():
+            cold = dps_bridge.combat_curve(
+                info, derived.bis.picks, levels, rate.monster, style, "Attack",
+                index=index, kit=kit, slayer_monsters=slayer,
+                boss_monsters=bosses, caps=caps,
+            )
+            warm = dps_bridge._curve_applied(
+                dps_bridge.combat_curve_raw(
+                    info, derived.bis.picks, levels, rate.monster, style, "Attack",
+                    index=index, kit=kit, slayer_monsters=slayer, boss_monsters=bosses,
+                ),
+                caps.get(rate.monster),
+                1.0,
+            )
+            assert warm == cold, (style, rate.monster)
+            checked += 1
+    assert checked, "no style was priced; this asserts nothing"
+
+
 def test_importing_without_the_extra_is_safe() -> None:
     """**The one promise this module makes**, and it was broken for a year.
 

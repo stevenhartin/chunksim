@@ -242,10 +242,11 @@ class _StepPricer:
     #: The derivation `on_state` was handed, waiting for `on_roll` to say which
     #: chunk reached it. See `on_state`.
     _pending: Derived | None = None
-    #: `dps_bridge.PricedFights` from the previous step, so the next one
-    #: reprices only what a roll actually moved. Never crosses a leg boundary:
-    #: a resumed leg starts from scratch and is merely slower, which beats
-    #: putting a derived object in a `Frontier` that has to pickle.
+    #: `inputs._Fights` from the previous step - the priced monster rates and
+    #: the training fights - so the next one reprices only what a roll actually
+    #: moved. Never crosses a leg boundary: a resumed leg starts from scratch
+    #: and is merely slower, which beats putting a derived object in a
+    #: `Frontier` that has to pickle.
     fights: Any = None
 
     @property

@@ -2009,6 +2009,26 @@ def _colosseum_run_seconds(
     return {colosseum.FORTIS_COLOSSEUM: max(built.seconds, colosseum.RUN_SECONDS)}
 
 
+@dataclass(frozen=True)
+class _Fights:
+    """What one priced state's *fight simulations* offer the next one.
+
+    Both halves are `dps_bridge` carries gated on `fight_signature` - the
+    predicate `enrich_incremental`'s own oracle already holds to a real chain
+    of states - so bundling them is one call site to edit when a third arrives
+    rather than a second parameter through four functions.
+
+    **Fights only, and that is the whole rule.** The item walk's fixpoint
+    table was carried through here once and is not any more: a seeded walk
+    returns a settled answer without re-deriving it, and a roll's whole
+    purpose is providing routes that answer said did not exist. See
+    `estimate._Fixpoint.settled`.
+    """
+
+    fights: Any = None
+    combat: Any = None
+
+
 def priced_heuristics(
     state: MapState,
     unlocked: Mapping[str, bool],
@@ -2060,12 +2080,15 @@ def priced_heuristics(
     # is the right trade - a hit is already fast, and storing it would put a
     # derived object in a cache keyed on inputs.
     carried: list[Any] = [] if _carry is None else _carry
+    previous_fights = previous.fights if isinstance(previous, _Fights) else None
+    previous_combat = previous.combat if isinstance(previous, _Fights) else None
 
     def compute() -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
         priced, _ = recipe_priced(
             state, derived, index, heuristics, levels, root=root, reference=blobs
         )
         coverage: dps_bridge.DpsCoverage | None = None
+        fights: Any = None
         if dps_bridge.DPS_AVAILABLE:
             # **Incremental when the caller has a previous roll, from
             # scratch otherwise**, and the two are asserted equal by
@@ -2079,11 +2102,10 @@ def priced_heuristics(
                 state.chunk_info,
                 derived,
                 goals,
-                previous=previous,
+                previous=previous_fights,
                 pinned_monsters=pinned_monsters,
                 pinned_slayer=pinned_slayer,
             )
-            carried.append(fights)
         # **Last, because it multiplies the kill rates.** Running this before
         # `enrich` would price combat off the scraped rates and then throw the
         # simulated ones away - the numbers would be quietly worse on exactly
@@ -2112,11 +2134,18 @@ def priced_heuristics(
             # per call would be the very anti-pattern its own docstring warns
             # against.
             monster_index = dps_bridge.load_monster_index()
-            by_style = dps_bridge.price_combat(
+            # **Incremental for the reason `enrich_incremental` is**, and on
+            # the same predicate: a roll only adds, so a fight whose signature
+            # and side of the ditch are unchanged costs what it cost. The cap
+            # and the multiplier are re-applied to a carried row rather than
+            # invalidating it - see `PricedCombat`, and note that a cap moves
+            # on exactly the rolls a new chunk adds a spawn.
+            by_style, combat = dps_bridge.price_combat_incremental(
                 state.chunk_info,
                 derived.bis.picks,
                 goals,
                 sorted(combat_xp.farmable_providers(derived, state.chunk_info)),
+                previous=previous_combat,
                 index=monster_index,
                 kit=kit,
                 slayer_monsters=slayer_monsters,
@@ -2127,25 +2156,46 @@ def priced_heuristics(
                 },
                 caps=caps,
             )
+            # **The curves ride the same carry**, keyed on the fight rather
+            # than on the answer: `combat_curve_raw` is 99 simulations of one
+            # already-chosen target, so re-asking it for a target the previous
+            # roll already climbed is the single most repeated work in a
+            # grind. Reset wholesale when the signature moves, since `combat`
+            # is empty of curves in that case.
+            curve_cache: dict[
+                tuple[str, str, str], Mapping[int, tuple[float, float]]
+            ] = dict(combat.curves)
 
             def _combat_curve(monster: str, style: str, skill: str) -> dict[int, float]:
                 stats = priced.monster_stats.get(monster)
-                return dps_bridge.combat_curve(
-                    state.chunk_info,
-                    derived.bis.picks,
-                    goals,
-                    monster,
-                    style,
-                    skill,
-                    index=monster_index,
-                    kit=kit,
-                    slayer_monsters=slayer_monsters,
-                    boss_monsters=boss_monsters,
-                    caps=caps,
-                    multiplier=stats.xp_multiplier if stats is not None else 1.0,
+                key = (monster, style, skill)
+                raw = curve_cache.get(key)
+                if raw is None:
+                    raw = dps_bridge.combat_curve_raw(
+                        state.chunk_info,
+                        derived.bis.picks,
+                        goals,
+                        monster,
+                        style,
+                        skill,
+                        index=monster_index,
+                        kit=kit,
+                        slayer_monsters=slayer_monsters,
+                        boss_monsters=boss_monsters,
+                    )
+                    curve_cache[key] = raw
+                return dps_bridge._curve_applied(
+                    raw,
+                    caps.get(monster) if caps else None,
+                    stats.xp_multiplier if stats is not None else 1.0,
                 )
 
             curves = combat_xp.combat_curves(by_style, _combat_curve, priced.spells)
+            # **After the curves, because they are what filled the cache.**
+            # The hint is never stored - `cached_enrich` returns a hit without
+            # running `compute` at all, and the next step then prices cold,
+            # which is correct rather than merely safe.
+            carried.append(_Fights(fights, replace(combat, curves=curve_cache)))
             computed_run_seconds = _raid_run_seconds(
                 state.chunk_info, derived.bis.picks, goals, index=monster_index, kit=kit
             )

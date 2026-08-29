@@ -1459,6 +1459,124 @@ def price_combat(
     return best
 
 
+@dataclass(frozen=True)
+class PricedCombat:
+    """One step's *training* fights, and what they were priced against.
+
+    `PricedFights`' twin for the damage question, and deliberately not the
+    same table: the two ask `kills_by_style` different things - `prefer="ttk"`
+    for a drop, `prefer="damage"` for experience - and `kills_by_style`'s own
+    docstring measures that at an order of magnitude, not a rounding.
+
+    **The rows hold the simulation, before the cap and the multiplier.**
+    Neither touches the fight - `spawn_caps` limits how many of a monster the
+    map can queue up and the multiplier is its XP bonus, both arithmetic
+    applied after - so a roll that moves either re-applies it to the carried
+    row instead of re-simulating. That matters: a cap moves whenever a new
+    chunk holds another spawn of the same monster, which is exactly the roll a
+    carry would otherwise be thrown away on.
+
+    What *does* invalidate a row is `fight_signature` moving, or the monster
+    changing side of the ditch - `enrich_incremental`'s own two conditions,
+    for its own reasons.
+    """
+
+    signature: tuple[Any, ...]
+    #: `monster -> {style: (kills an hour, hitpoints, match)}`, uncapped.
+    rows: Mapping[str, Mapping[str, tuple[float, float, str]]]
+    #: Who was inside the ditch when these were priced.
+    wilderness: frozenset[str] = frozenset()
+    #: `(monster, style, skill) -> combat_curve_raw`'s own answer.
+    curves: Mapping[tuple[str, str, str], Mapping[int, tuple[float, float]]] = field(
+        default_factory=dict
+    )
+
+
+def price_combat_incremental(
+    chunk_info: ChunkInfo,
+    picks: Mapping[str, str],
+    levels: Mapping[str, int],
+    monsters: Iterable[str],
+    *,
+    previous: PricedCombat | None = None,
+    index: MonsterIndex | None = None,
+    slayer_monsters: frozenset[str] = frozenset(),
+    boss_monsters: frozenset[str] = frozenset(),
+    kit: Kit | None = None,
+    multipliers: Mapping[str, float] | None = None,
+    caps: Mapping[str, float] | None = None,
+) -> tuple[dict[str, CombatRate], PricedCombat]:
+    """`price_combat`, reusing whatever the previous roll already simulated.
+
+    **`price_combat` is left alone on purpose**, exactly as `enrich` is beside
+    `enrich_incremental`: only a timeline has a previous roll, so the reuse
+    path is confined to the one caller that can use it and every other caller
+    is provably unaffected. `tests/test_dps_bridge.py` asserts the two equal
+    across a chain of real states rather than trusting the predicate - a wrong
+    one here does not crash, it returns plausible numbers that drift.
+
+    **The winner is recomputed over the current set every call**, never
+    carried. A reused row says what a fight costs; which fight wins is a
+    question about the whole set, and a new monster can take a style. Rows for
+    monsters no longer in `monsters` are dropped rather than trusted, so the
+    set shrinking - which measurement says does not happen, and which this
+    does not need to assume - cannot leave a dethroned winner standing.
+    """
+    _require()
+    monster_index = load_monster_index() if index is None else index
+    versions = version_index(monster_index)
+    loadouts = build_loadouts(chunk_info, picks, levels, kit)
+    signature = fight_signature(picks, levels, kit) if kit is not None else ()
+    here = kit.wilderness if kit is not None else frozenset()
+    if not loadouts:
+        return {}, PricedCombat(signature, {}, here)
+    reductions = kit.reductions if kit is not None else None
+
+    usable = previous if previous is not None and previous.signature == signature else None
+    rows: dict[str, Mapping[str, tuple[float, float, str]]] = {}
+    best: dict[str, CombatRate] = {}
+    for name in monsters:
+        if name in GROUP_BOSSES:
+            continue
+        row: Mapping[str, tuple[float, float, str]] | None = None
+        if usable is not None and (name in here) == (name in usable.wilderness):
+            row = usable.rows.get(name)
+        if row is None:
+            row = {
+                style: (kill.kills_per_hour(), kill.hitpoints, kill.match)
+                for style, kill in kills_by_style(
+                    loadouts,
+                    name,
+                    candidate_targets(monster_index, name, versions),
+                    on_slayer_task=name in slayer_monsters,
+                    reductions=reductions,
+                    wilderness=name in here,
+                    boss=name in boss_monsters,
+                    prefer="damage",
+                ).items()
+            }
+        rows[name] = row
+        cap = None if caps is None else caps.get(name)
+        multiplier = 1.0 if multipliers is None else multipliers.get(name, 1.0)
+        for style, (kills, hitpoints, match) in row.items():
+            if kills <= 0 or hitpoints <= 0:
+                continue
+            rate = min(kills, cap) if cap is not None and cap > 0 else kills
+            damage = rate * hitpoints * multiplier
+            standing = best.get(style)
+            if standing is None or damage > standing.damage_per_hour:
+                best[style] = CombatRate(
+                    style=style,
+                    monster=name,
+                    damage_per_hour=damage,
+                    kills_per_hour=rate,
+                    hitpoints=hitpoints,
+                    xp_multiplier=multiplier,
+                    match=match,
+                )
+    return best, PricedCombat(signature, rows, here, dict(usable.curves) if usable else {})
+
+
 def combat_curve(
     chunk_info: ChunkInfo,
     picks: Mapping[str, str],
@@ -1492,6 +1610,59 @@ def combat_curve(
     library to land one at all) is simply absent from the result, the same
     "no route" the rest of this project gives rather than a zero it would
     have to explain.
+
+    **The simulation is `combat_curve_raw` and this is the arithmetic on top**,
+    so a timeline can carry the ninety-nine fights and re-apply a moved cap or
+    multiplier without re-simulating any of them. One implementation, two
+    entry points - see `PricedCombat`.
+    """
+    return _curve_applied(
+        combat_curve_raw(
+            chunk_info, picks, levels, monster, style, skill,
+            index=index, kit=kit, slayer_monsters=slayer_monsters,
+            boss_monsters=boss_monsters,
+        ),
+        None if caps is None else caps.get(monster),
+        multiplier,
+    )
+
+
+def _curve_applied(
+    raw: Mapping[int, tuple[float, float]], cap: float | None, multiplier: float
+) -> dict[int, float]:
+    """`combat_curve_raw`'s fights as damage an hour, capped and multiplied.
+
+    **Neither term touches the fight**, which is what lets a carried curve
+    survive a moved `spawn_caps` entry: they are arithmetic applied after the
+    simulation, so re-applying them is a dict walk rather than 99 kills.
+    """
+    found: dict[int, float] = {}
+    for level, (kills, hitpoints) in raw.items():
+        rate = min(kills, cap) if cap is not None and cap > 0 else kills
+        if rate <= 0:
+            continue
+        found[level] = rate * hitpoints * multiplier
+    return found
+
+
+def combat_curve_raw(
+    chunk_info: ChunkInfo,
+    picks: Mapping[str, str],
+    levels: Mapping[str, int],
+    monster: str,
+    style: str,
+    skill: str,
+    *,
+    index: MonsterIndex | None = None,
+    kit: Kit | None = None,
+    slayer_monsters: frozenset[str] = frozenset(),
+    boss_monsters: frozenset[str] = frozenset(),
+) -> dict[int, tuple[float, float]]:
+    """`{level: (kills an hour, hitpoints)}` - `combat_curve`'s simulation
+    alone, before the cap and the XP multiplier are spent on it.
+
+    Separate so a carried curve is the expensive half and the cheap half is
+    redone; `combat_curve` is this plus `_curve_applied` and nothing else.
     """
     _require()
     monster_index = load_monster_index() if index is None else index
@@ -1503,9 +1674,8 @@ def combat_curve(
     wilderness = monster in kit.wilderness if kit is not None else False
     on_slayer_task = monster in slayer_monsters
     boss = monster in boss_monsters
-    cap = None if caps is None else caps.get(monster)
 
-    found: dict[int, float] = {}
+    found: dict[int, tuple[float, float]] = {}
     for level in range(1, 100):
         sample_levels = dict(levels)
         sample_levels[skill] = level
@@ -1524,12 +1694,7 @@ def combat_curve(
         ).get(style)
         if kill is None or kill.hitpoints <= 0:
             continue
-        rate = kill.kills_per_hour()
-        if cap is not None and cap > 0:
-            rate = min(rate, cap)
-        if rate <= 0:
-            continue
-        found[level] = rate * kill.hitpoints * multiplier
+        found[level] = (kill.kills_per_hour(), kill.hitpoints)
     return found
 
 
