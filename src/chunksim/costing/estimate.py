@@ -4112,6 +4112,50 @@ def _item_tasks(derived: Derived) -> list[str]:
     return names
 
 
+def naming_walk(
+    chunk_info: ChunkInfo, world: WorldIndex, heuristics: Heuristics
+) -> _Walk:
+    """A walk built only far enough to answer `wanted_names`.
+
+    `_required_items`/`_required_kills` read nothing but `chunk_info` and the
+    lowercase item index, and both are fixed for a whole grind - so a caller
+    asking the same question every roll builds one of these once instead of a
+    `_setup` per roll. It prices nothing and must not be used to.
+    """
+    return _Walk(
+        chunk_info=chunk_info,
+        world=world,
+        heuristics=heuristics,
+        by_lower={item.lower(): item for item in world.item_sources},
+    )
+
+
+def wanted_names(
+    walk: _Walk, derived: Derived, heuristics: Heuristics
+) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
+    """Every *name* `timeline.added_estimate` filters a step's cost on.
+
+    **The whole basis of skipping a roll.** `added_estimate` reports an item
+    or a task only when its *name* is absent from the roll before - it never
+    asks what anything costs - so a step wanting exactly what the last one
+    wanted reports nothing, whatever the prices did. The names come off the
+    derivation, so this answers without walking a single route.
+
+    The third set is the outstanding quests, and it is not optional: they
+    reach `EstimateResult.tasks` by a different path from the other two, and
+    leaving them out reported a 357.9-hour roll as free.
+
+    What this deliberately does **not** cover is a price *rising* with no new
+    name to explain it - see `grind._StepPricer.price` for why that is held to
+    be impossible on this export rather than checked here.
+    """
+    return (
+        frozenset(_required_items(walk, derived)),
+        frozenset(_required_kills(walk, derived)),
+        frozenset(task.task for task in _quest_tasks(derived, heuristics)),
+    )
+
+
 def _required_items(walk: _Walk, derived: Derived) -> dict[str, set[str]]:
     """Every item the active set needs, mapped to the tasks that want it.
 

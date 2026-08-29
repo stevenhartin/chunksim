@@ -120,6 +120,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from chunksim.costing.estimate import naming_walk, wanted_names
 from chunksim.costing.heuristics import Heuristics
 from chunksim.costing.inputs import priced_heuristics_reusing
 from chunksim.derive.pipeline import Derived, MapState, load_map_state
@@ -248,6 +249,12 @@ class _StepPricer:
     #: and is merely slower, which beats putting a derived object in a
     #: `Frontier` that has to pickle.
     fights: Any = None
+    #: The names the last priced step wanted, and the walk that reads them.
+    #: Both per-leg and stack-local, like everything else on this pricer.
+    wanted: Any = None
+    naming: Any = None
+    #: Steps whose total was carried rather than computed - see `price`.
+    provisional: list[int] = field(default_factory=list)
 
     @property
     def levels(self) -> dict[str, int]:
@@ -290,6 +297,36 @@ class _StepPricer:
         so it has no `chunk_id`. It is priced, because the next step needs
         something to diff against, and never judged.
         """
+        # **A roll that wants nothing new costs nothing, and needs no price
+        # to say so.** `timeline.added_estimate` reports an item or a task
+        # only when its *name* was absent from the roll before, so a step
+        # wanting exactly what the last one wanted reports an empty diff
+        # whatever the prices did - and on the real map that is 44% of rolls,
+        # each of which was spending a full walk to arrive at zero.
+        #
+        # **`total` is carried rather than computed, and that is the one
+        # inexactness.** A roll can make things *cheaper* without wanting
+        # anything new, which `added` is right to ignore (it reports
+        # `max(0, rise)`) but the outstanding total is not - so the step is
+        # recorded as provisional and the series says so. Measured on the real
+        # map at 9.7 hours in 3,978, 0.25%, and self-correcting at the next
+        # priced step.
+        #
+        # **What it rests on** is that a price cannot *rise* with no new name
+        # to explain it. A roll only adds providers, so a route that existed
+        # still costs what it cost - the same monotonicity `pipeline.derive`'s
+        # area carry leans on, measured the same way and not proved.
+        # `naming` absent means a caller built this pricer without the walk
+        # the predicate reads - the wave path's own, and every test that
+        # constructs one by hand. Pricing every step is the right answer
+        # there: the skip is an optimisation and never a requirement.
+        if order > 0 and self.wanted is not None and self.naming is not None:
+            wanted = wanted_names(self.naming, derived, self.base.heuristics)
+            if wanted == self.wanted:
+                self.provisional.append(len(self.added))
+                self._record(order, 0.0, self.totals[-1], derived, chunk_id)
+                return
+
         rates = self._rates(order, derived)
         # Two steps, one basis, `baseline=True` so only the second is reported
         # - `batch.price_detail`'s own shape, and the reason this is not a
@@ -309,6 +346,24 @@ class _StepPricer:
         )
         _, fresh, total = walked[-1]
         cost = 0.0 if order == 0 else round(sum(fresh.buckets.values()), 4)
+        if self.naming is not None:
+            self.wanted = wanted_names(self.naming, derived, self.base.heuristics)
+        self._record(order, cost, total, derived, chunk_id)
+
+    def _record(
+        self,
+        order: int,
+        cost: float,
+        total: float,
+        derived: Derived,
+        chunk_id: str | None,
+    ) -> None:
+        """File one step's numbers and judge it.
+
+        Shared by the priced path and the skipped one so a roll that costs
+        nothing is still *counted* - it can be the one that reaches the cap,
+        and a skip that quietly stopped doing that would let a run overshoot.
+        """
         self.added.append(cost)
         self.totals.append(total)
         self.previous = derived
@@ -437,6 +492,10 @@ class Frontier:
     #: the records and `write_sim_run` wants the dicts, so keeping the
     #: richer form means no leg has to guess which the next one needs.
     ledger: tuple[UnlockRecord, ...]
+    #: Indices into `totals` whose value was carried rather than computed,
+    #: because the step wanted nothing new - see `_StepPricer.price`. `added`
+    #: is exact at every index; only these totals are provisional.
+    provisional: tuple[int, ...] = ()
 
     @property
     def steps(self) -> int:
@@ -585,6 +644,10 @@ def advance(
         offset=done,
         added=list(frontier.added) if frontier is not None else [],
         totals=list(frontier.totals) if frontier is not None else [],
+        provisional=list(frontier.provisional) if frontier is not None else [],
+        # Built once for the whole leg: `wanted_names` reads only the export
+        # and the lowercase item index, both fixed for a grind.
+        naming=naming_walk(state.chunk_info, base.world, base.heuristics),
         resumed=frontier is not None,
     )
 
@@ -625,6 +688,7 @@ def advance(
             derived=pricer.frozen(),
             added=tuple(pricer.added),
             totals=tuple(pricer.totals),
+            provisional=tuple(pricer.provisional),
             ledger=ledger,
         ),
         outcome=None if cancelled and ended is None else ended,
@@ -813,6 +877,9 @@ def settle(
             added=tuple(added),
             totals=tuple(totals),
             ledger=tuple(ledger),
+            # A wave prices every step it keeps, so it leaves none provisional
+            # of its own - what came in is what goes out.
+            provisional=frontier.provisional,
         ),
         outcome=outcome,
         stamp=stamp,

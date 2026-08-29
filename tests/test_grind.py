@@ -551,3 +551,72 @@ class TestCollate:
         found = grind.collate([])
 
         assert found == {"runs": [], "distribution": [], "chunks": [], "unwalled": {}}
+
+
+@pytest.mark.slow
+@pytest.mark.real_cache
+@pytest.mark.parametrize("map_id", ["fray", "verf"])
+def test_skipping_a_roll_that_wants_nothing_new_costs_the_same(
+    real_export: Any,
+    real_tasks_map: dict[str, str],
+    map_id: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**The whole evidence for the root discard, and it is measurement.**
+
+    A roll wanting exactly what the last one wanted reports an empty diff,
+    because `timeline.added_estimate` filters by *name* and never asks what
+    anything costs. That half is exact. What is not proved is the other - that
+    a price cannot *rise* with no new name to explain it - so this runs a real
+    grind both ways and compares every `added`, which is the number the
+    stopping decision is made on.
+
+    An earlier predicate left the outstanding quests out and reported a
+    357.9-hour roll as free; only comparing the whole series caught it, which
+    is why this compares one rather than spot-checking.
+
+    `totals` is deliberately **not** compared: a skipped step carries its
+    total forward, and that drift is the known, recorded cost of this - see
+    `Frontier.provisional`.
+    """
+    from chunksim.derive.pipeline import load_map_state
+    from chunksim.runs.batch import RunSpec
+    from chunksim.store.cache import data_root, read_cache
+    from chunksim.store.derived_cache import CacheBehaviour
+
+    envelope = read_cache(map_id, root=data_root())
+    payload = envelope["data"]
+    state, unlocked = load_map_state(payload, real_export, real_tasks_map)
+    assert state is not None and unlocked
+
+    series: dict[bool, tuple[float, ...]] = {}
+    provisional: dict[bool, tuple[int, ...]] = {}
+    for skipping in (False, True):
+        if not skipping:
+            # No naming walk means the predicate never runs and every step is
+            # priced - the definition this arm is the control for.
+            monkeypatch.setattr(grind, "naming_walk", lambda *a, **k: None)
+        else:
+            monkeypatch.undo()
+        spec = RunSpec(
+            directory=tmp_path / f"{map_id}-{skipping}" / "run-0",
+            name="run-0",
+            seed=20260829,
+            rolls=12,
+            payload=payload,
+            base_map=map_id,
+            base_fetched_at=None,
+            chunkinfo_path=None,
+            root=None,
+            batch_id="skip-oracle",
+            cache_behaviour=CacheBehaviour.ALL,
+            stop_over_hours=1e9,
+        )
+        leg = grind.advance(spec, budget=12)
+        series[skipping] = tuple(round(x, 4) for x in leg.frontier.added)
+        provisional[skipping] = leg.frontier.provisional
+
+    assert series[True] == series[False], f"{map_id}: the skip changed a roll's cost"
+    assert not provisional[False], "nothing may be provisional when nothing was skipped"
+    assert provisional[True], "the skip never fired, so this asserts nothing"
