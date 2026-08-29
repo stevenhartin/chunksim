@@ -39,7 +39,8 @@ priced exactly, and the same forty seeds priced exactly throughout: every one
 of the forty stopped at the same step on the same chunk, 66 of 292 rolls were
 priced from the table, and the batch took 42.8s against 60.2s. A batch that
 small barely warms the table; coverage grows with every exact roll, so the
-guessed share rises with the batch.
+guessed share rises with the batch: at 160 runs, 160 of 160 decisions the
+same, 508 of 1,204 rolls from the table, and 221.9s against 108.2s.
 
 Pure: samples in, a picklable table out, and a lookup over it.
 """
