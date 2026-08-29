@@ -48,6 +48,11 @@ The modules, and what each owns:
   `leg_plan`) are plain functions, so there are still two pools in this
   project. Also `collate`, the pure aggregation over a batch of them; it names
   no chunk, because nothing here parses the export.
+- `surrogate.py` - a per-batch table of what each chunk cost, learned from the
+  batch's own exact grinds and used to price the rest where every sample lands
+  on one side of the limit. **Never offline**: a chunk's cost is a property of
+  the base map, so the table lives and dies with one batch. Only exact rolls
+  teach it; a guessed roll is flagged `provisional_added` and never fed back.
 - `timeline.py` - replaying a run one roll at a time, and `added_hours`: what a
   roll *cost*, as a diff of what is being costed rather than of the totals.
   Also `basis`, which says *how* a stored series was priced beside

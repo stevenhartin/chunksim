@@ -5621,6 +5621,8 @@ async function loadMapsPane() {
         data-tip="<b>Hours you would not spend</b><span class='sub'>Each simulation stops the first time a roll puts more than this many hours in front of you.</span>">
       <input id="grind-runs" type="number" min="1" value="10" style="width:7ch" aria-label="Simulations"
         data-tip="How many independent simulations to run, each with its own seed. More is a better distribution and a longer wait.">
+      <input id="grind-surrogate" type="number" min="0" max="100" step="5" value="0" style="width:7ch" aria-label="Exact %"
+        data-tip="<b>Percent of simulations priced exactly</b><span class='sub'>0 prices every roll of every simulation. Above 0, that share of the simulations is priced exactly and the rest are priced from what those cost, roll by roll - a chunk is only ever guessed where every exact run agreed which side of the wall it lands on, so the stopping step is the exact one either way.</span><span class='hint'>10 is a good start for a hundred or more simulations</span>">
       <button id="do-grind" type="button"
         data-tip="<b>How far do you get before the wall</b><span class='sub'>Rolls until a chunk is too big, or until there is nothing left to roll.</span><span class='hint'>Every roll is priced as it lands - about two seconds each, against two seconds for a whole roll simulation</span>">Grind</button>
     </div>`;
@@ -5721,6 +5723,11 @@ async function loadMapsPane() {
     document.getElementById("do-grind").onclick = () => {
       const hours = Number(document.getElementById("grind-hours").value) || 0;
       const simulations = Number(document.getElementById("grind-runs").value) || 1;
+      /* A percent on the form, a fraction on the wire: `actions._grind_job`
+       * refuses anything outside (0, 1], and 0 means off rather than "none
+       * exact", which would be a batch with nothing to learn from. */
+      const exactPercent = Number(document.getElementById("grind-surrogate").value) || 0;
+      const surrogate = exactPercent > 0 ? Math.min(exactPercent, 100) / 100 : null;
       if (hours <= 0) { document.getElementById("grind-hours").focus(); return; }
       /* **The result does not become the map, unlike a roll.** A roll makes
        * one future and that future is the answer, so opening it is the whole
@@ -5729,7 +5736,7 @@ async function loadMapsPane() {
        * the result. The way into any single run is the drill-down, which lands
        * you on the roll that ended it. */
       runAction(`Grind past ${hours}h`, "/api/grind",
-        { map: state.map, name: state.map + "-grind", hours, simulations },
+        { map: state.map, name: state.map + "-grind", hours, simulations, surrogate },
         async (result) => {
           await loadMaps();
           loadMapsPane();

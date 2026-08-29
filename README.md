@@ -1043,6 +1043,16 @@ maps are your own work and nothing can recompute them.
    saving a number it can't stand behind. `--no-carry-areas` turns it off and derives every roll from
    scratch.
 
+For a *grind* batch, `--surrogate 0.1` prices the first 10% of runs exactly and then prices the
+rest from a table of what each chunk cost those runs, keyed on the chunk and on which
+requirement-introducing chunks were already held. A roll is priced from the table only when every
+sample of its chunk lands on the same side of the stopping threshold, so the *stopping step* is the
+exact path's whether or not a roll took it; a chunk the table has not seen, or whose samples
+straddle the threshold, goes to the exact walk, and every exact roll teaches the table as the batch
+proceeds. Guessed rolls are flagged `provisional_added` in the run's timeline. The table is built
+from this batch alone: a chunk's cost is a property of the base map - its rules, its account's
+levels, what it already holds - so nothing is cached across batches.
+
    Its intermediate states are held rather than written until that check passes, so a carried run
    ends up caching every roll like a cold one — it just does it a moment later, and a run that
    diverges writes nothing at all.

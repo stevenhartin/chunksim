@@ -34,6 +34,9 @@ there is one, and it is the module that already owned the layout.
 
 from __future__ import annotations
 
+import dataclasses
+import math
+
 import os
 import random
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -90,6 +93,7 @@ from chunksim.costing.heuristics import Heuristics, merge
 from chunksim.costing.heuristics import load as load_heuristics
 from chunksim.derive.pipeline import Derived, MapState, load_map_state
 from chunksim.derive.search import WorldIndex, build_world_index
+from chunksim.runs import surrogate
 from chunksim.runs.simulate import UnlockRecord, simulate_rolls, simulated_payload
 from chunksim.model.summary import _mapping
 from chunksim.runs.timeline import FINAL_BASIS, added_estimate, added_hours
@@ -144,6 +148,11 @@ class RunSpec:
     #: made inside the worker doing the rolling, from something it priced. So
     #: the *threshold* travels and the decision is rebuilt on arrival.
     stop_over_hours: float | None = None
+    #: `runs/surrogate.py`'s table, learned from this batch's own exact runs,
+    #: or `None` to price every roll exactly. Attached by `_schedule` once
+    #: enough runs have finished to build one; a spec built by anything else
+    #: carries none and behaves exactly as before.
+    surrogate: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -930,8 +939,17 @@ def _schedule(
     on_complete: Callable[[RunResult], None] | None,
     on_roll: Callable[[int, int, str], None] | None,
     should_stop: Callable[[], bool] | None,
+    learn_after: int | None = None,
 ) -> list[RunResult]:
     """Drive `specs` as resumable legs, speculating once the pool drains.
+
+    **`learn_after` turns on the surrogate**: once that many runs have
+    finished, their exact rolls become `runs/surrogate.py`'s table and every
+    run submitted afterwards carries it on its spec. The table keeps learning
+    from each later run's *exact* rolls as it completes - see `_learn` - so
+    coverage grows through the batch. Runs already inside the pool keep the
+    table they were handed; only the parent ever builds one, which is why
+    this adds no synchronisation either.
 
     **Two regimes, and the switch between them is the whole idea.** While there
     are at least as many unfinished runs as workers, every worker has a run of
@@ -963,6 +981,17 @@ def _schedule(
     waiting = [spec.name for spec in specs]
     results: list[RunResult] = []
     futures: dict[Any, tuple[str, str, int]] = {}
+    samples: list[surrogate.Sample] = []
+    table: dict[str, Any] | None = None
+
+    def learn(result: RunResult) -> None:
+        """Fold a finished run's exact rolls into the table, and rebuild it."""
+        nonlocal table
+        if learn_after is None:
+            return
+        samples.extend(_learn(live[result.name].spec, result))
+        if len(results) >= learn_after and samples:
+            table = surrogate.build(samples)
 
     def report(name: str, rolls: int) -> None:
         """Rolls are counted in the parent here, not reported from inside a
@@ -976,6 +1005,10 @@ def _schedule(
 
     def submit(name: str) -> None:
         row = live[name]
+        if table is not None and row.frontier is None and row.spec.surrogate is None:
+            # A run's first leg, with a table to hand it. Later legs reuse the
+            # spec, so a run prices against one table for its whole length.
+            row.spec = dataclasses.replace(row.spec, surrogate=table)
         alive = len(waiting) + sum(1 for other in live.values() if other.pending)
         spare = workers - alive
         if row.frontier is None or spare < 1:
@@ -995,6 +1028,7 @@ def _schedule(
 
     def finish(row: _Live, leg: Any) -> None:
         results.append(plan.write(row.spec, leg))
+        learn(results[-1])
         if on_complete is not None:
             on_complete(results[-1])
 
@@ -1052,6 +1086,25 @@ def _schedule(
         if should_stop is not None and should_stop() and not futures:
             break
     return results
+
+
+def _learn(spec: RunSpec, result: RunResult) -> list[surrogate.Sample]:
+    """A finished run's exact rolls as surrogate samples, or none.
+
+    Reads the series `grind.write_leg` puts in `RunResult.extra` - the same
+    numbers that go to `timeline.json`, kept small by construction. A run of
+    another kind, or one that never priced, contributes nothing.
+    """
+    added = result.extra.get("added")
+    if not isinstance(added, list) or len(added) < 2:
+        return []
+    guessed = result.extra.get("provisional_added") or ()
+    # The base map's own chunks, before this run rolled anything. Built here
+    # rather than through `_wave_held`, which folds a frontier's rolls in and
+    # has no frontier to be handed at this point.
+    unlocked = spec.payload.get("chunks", {}).get("unlocked", {})
+    base = [str(chunk) for chunk in unlocked]
+    return surrogate.samples_from(base, result.rolls, added, guessed=guessed)
 
 
 def _wave_held(spec: RunSpec, frontier: Any) -> dict[str, bool]:
@@ -1372,6 +1425,7 @@ def run_batch(
     stop_over_hours: float | None = None,
     extra: Mapping[str, Any] | None = None,
     legs: LegPlan | None = None,
+    surrogate: float | None = None,
 ) -> BatchResult:
     """Claim a batch directory, run `runs` simulations into it, and summarise.
 
@@ -1468,13 +1522,24 @@ def run_batch(
     # one worker, or one run, the pool never drains into an idle stretch and
     # every leg boundary would be pure overhead - so the ordinary path stays
     # exactly what it was and this is not a mode anyone opts into by accident.
-    if legs is not None and workers > 1 and len(specs) > 1:
+    # `surrogate` is a fraction of the batch; what `_schedule` needs is how
+    # many finished runs to wait for. Never fewer than two, or the table would
+    # be built from one path and could not know a chunk's cost varies with
+    # what came before it. **A surrogate batch always schedules**, even on one
+    # worker: only the scheduler's parent sees runs finish in order, which is
+    # where the table is learned and handed on.
+    learn_after = (
+        None if surrogate is None or surrogate <= 0 or len(specs) < 2
+        else max(2, math.ceil(len(specs) * min(surrogate, 1.0)))
+    )
+    if legs is not None and len(specs) > 1 and (workers > 1 or learn_after is not None):
         from concurrent.futures import ProcessPoolExecutor
 
         with ProcessPoolExecutor(max_workers=min(workers, len(specs))) as pool:
             results = _schedule(
                 pool, specs, workers=min(workers, len(specs)), plan=legs,
                 on_complete=on_complete, on_roll=on_roll, should_stop=should_stop,
+                learn_after=learn_after,
             )
         results.sort(key=lambda found: found.name)
     elif workers == 1 or len(specs) == 1:

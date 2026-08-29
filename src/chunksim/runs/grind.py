@@ -121,6 +121,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chunksim.costing.estimate import naming_walk, wanted_names
+from chunksim.runs import surrogate
 from chunksim.costing.heuristics import Heuristics
 from chunksim.costing.inputs import priced_heuristics_reusing
 from chunksim.derive.pipeline import Derived, MapState, load_map_state
@@ -255,6 +256,10 @@ class _StepPricer:
     naming: Any = None
     #: Steps whose total was carried rather than computed - see `price`.
     provisional: list[int] = field(default_factory=list)
+    #: Steps whose cost came from the surrogate table - see `price`.
+    provisional_added: list[int] = field(default_factory=list)
+    #: `runs/surrogate.py`'s table, or `None` to price every roll exactly.
+    surrogate: Any = None
 
     @property
     def levels(self) -> dict[str, int]:
@@ -325,6 +330,22 @@ class _StepPricer:
             if wanted == self.wanted:
                 self.provisional.append(len(self.added))
                 self._record(order, 0.0, self.totals[-1], derived, chunk_id)
+                return
+
+        # **A chunk this batch has already priced enough times to know.** The
+        # table says what it cost from states like this one and, crucially,
+        # whether every sample landed on the same side of the limit - only
+        # then is the walk skipped, so the stopping decision is the exact
+        # path's whether or not this roll took it. See `runs/surrogate.py`.
+        if order > 0 and chunk_id is not None and self.surrogate is not None:
+            guess = surrogate.lookup(self.surrogate, chunk_id, self.held[order - 1])
+            if guess is not None and guess.verdict(self.limit) != "uncertain":
+                index = len(self.added)
+                self.provisional_added.append(index)
+                self.provisional.append(index)
+                if self.naming is not None:
+                    self.wanted = wanted_names(self.naming, derived, self.base.heuristics)
+                self._record(order, guess.median, self.totals[-1] + guess.median, derived, chunk_id)
                 return
 
         rates = self._rates(order, derived)
@@ -494,8 +515,12 @@ class Frontier:
     ledger: tuple[UnlockRecord, ...]
     #: Indices into `totals` whose value was carried rather than computed,
     #: because the step wanted nothing new - see `_StepPricer.price`. `added`
-    #: is exact at every index; only these totals are provisional.
+    #: is exact at every index not in `provisional_added`; only these totals
+    #: are provisional.
     provisional: tuple[int, ...] = ()
+    #: Indices into `added` that came from the batch's surrogate table rather
+    #: than a walk - see `runs/surrogate.py`. Never fed back into the table.
+    provisional_added: tuple[int, ...] = ()
 
     @property
     def steps(self) -> int:
@@ -645,6 +670,8 @@ def advance(
         added=list(frontier.added) if frontier is not None else [],
         totals=list(frontier.totals) if frontier is not None else [],
         provisional=list(frontier.provisional) if frontier is not None else [],
+        provisional_added=list(frontier.provisional_added) if frontier is not None else [],
+        surrogate=spec.surrogate,
         # Built once for the whole leg: `wanted_names` reads only the export
         # and the lowercase item index, both fixed for a grind.
         naming=naming_walk(state.chunk_info, base.world, base.heuristics),
@@ -689,6 +716,7 @@ def advance(
             added=tuple(pricer.added),
             totals=tuple(pricer.totals),
             provisional=tuple(pricer.provisional),
+            provisional_added=tuple(pricer.provisional_added),
             ledger=ledger,
         ),
         outcome=None if cancelled and ended is None else ended,
@@ -880,6 +908,7 @@ def settle(
             # A wave prices every step it keeps, so it leaves none provisional
             # of its own - what came in is what goes out.
             provisional=frontier.provisional,
+            provisional_added=frontier.provisional_added,
         ),
         outcome=outcome,
         stamp=stamp,
@@ -917,6 +946,8 @@ def write_leg(spec: RunSpec, leg: Leg) -> RunResult:
                     "stamp": dict(leg.stamp),
                     "added": list(frontier.added),
                     "totals": list(frontier.totals),
+                    "provisional": list(frontier.provisional),
+                    "provisional_added": list(frontier.provisional_added),
                 }
             ),
         )
@@ -928,8 +959,15 @@ def write_leg(spec: RunSpec, leg: Leg) -> RunResult:
         cancelled=cancelled,
         written=bool(ledger),
         # Into `batch.json`, so the results overlay is one file read rather
-        # than one request per simulation. See `RunResult.extra`.
-        extra={"grind": outcome.as_dict()},
+        # than one request per simulation. See `RunResult.extra`. The series
+        # ride along too - twenty-odd floats - because `batch._learn` builds
+        # the surrogate table from them and must know which came from it.
+        extra={
+            "grind": outcome.as_dict(),
+            "added": list(frontier.added),
+            "provisional": list(frontier.provisional),
+            "provisional_added": list(frontier.provisional_added),
+        },
     )
 
 

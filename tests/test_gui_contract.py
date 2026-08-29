@@ -1560,7 +1560,9 @@ def test_the_maps_pane_offers_two_simulations_and_names_them_apart() -> None:
 
     assert "<h3>Roll Simulation</h3>" in js
     assert "<h3>Next Grind Simulation</h3>" in js
-    for element in ("do-sim", "sim-rolls", "sim-runs", "do-grind", "grind-hours", "grind-runs"):
+    for element in (
+        "do-sim", "sim-rolls", "sim-runs", "do-grind", "grind-hours", "grind-runs", "grind-surrogate",
+    ):
         assert f'id="{element}"' in js, element
         assert f'getElementById("{element}")' in js, element
 

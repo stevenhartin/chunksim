@@ -664,6 +664,18 @@ def _grind_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     workers = jobs if jobs > 0 else (os.process_cpu_count() or 1)
     seed_raw = payload.get("seed")
     seed = None if seed_raw in (None, "") else as_int({"s": seed_raw}, "s", 0) or None
+    # The ground-truth fraction for `runs/surrogate.py`, or off. Refused rather
+    # than clamped outside (0, 1]: a fraction above one is a request that
+    # cannot mean anything, and a silently corrected one would price a batch
+    # differently from what was asked.
+    surrogate_raw = payload.get("surrogate")
+    surrogate: float | None = None
+    if surrogate_raw not in (None, "", 0, False):
+        if isinstance(surrogate_raw, bool) or not isinstance(surrogate_raw, (int, float)):
+            raise ValueError("surrogate must be a fraction between 0 and 1")
+        if not 0 < surrogate_raw <= 1:
+            raise ValueError("surrogate must be a fraction between 0 and 1")
+        surrogate = float(surrogate_raw)
 
     envelope = cache.read_cache(map_id, ctx.root)
     if not load_reference(ctx.root, map_id).scraped_found:
@@ -757,6 +769,7 @@ def _grind_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             # two simulations, where there is no drain to reclaim.
             legs=grind.leg_plan(),
             stop_over_hours=hours,
+            surrogate=surrogate,
             extra={
                 "origin": GRIND_ORIGIN,
                 "grind": {"hours": hours, "simulations": runs, "roll_cap": grind.MAX_ROLLS},

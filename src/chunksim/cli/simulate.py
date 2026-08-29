@@ -54,6 +54,7 @@ def _simulate_to_cache(args: argparse.Namespace) -> int:
         chunkinfo_path=args.chunkinfo,
         cache_behaviour=CacheBehaviour(args.cache_behaviour),
         carry_areas=args.carry_areas,
+        surrogate=args.surrogate,
         on_complete=None if quiet else report,
     )
 
@@ -165,6 +166,18 @@ def add_arguments(
             "carry each roll's discovered areas into the next roll's "
             "derivation, and check the finished run against a cold one "
             "(~1.8x faster; --no-carry-areas derives every roll from scratch)"
+        ),
+    )
+    simulate.add_argument(
+        "--surrogate",
+        type=float,
+        default=None,
+        metavar="FRACTION",
+        help=(
+            "grind batches only: price this fraction of the runs exactly, then price "
+            "the rest from a table of what each chunk cost them, falling back to the "
+            "exact walk wherever the table cannot decide (see runs/surrogate.py; "
+            "default: off)"
         ),
     )
     simulate.add_argument(
