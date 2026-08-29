@@ -31,10 +31,18 @@ src/chunksim/
   gui/      the server, split by what each route costs
 ```
 
+`heuristics/` sits beside them and is the ninth directory, but it is **data, not a subpackage**: the
+checked-in wiki blobs and `overrides.json`, no `__init__.py`, shipped by `package-data` rather than
+`packages.find`. Nothing imports from it; `store/cache.py` opens it.
+
 Each directory's `__init__.py` carries the rule that holds across it **and one entry per module
 saying what that module owns** — and no code: no re-exports, which would rebuild the god-module this
-layout replaced and put "which tests do I run" back to "all of them". The single exception is
-`cli/__init__.py`, which re-exports `main` because `[project.scripts]` names `chunksim.cli:main`.
+layout replaced and put "which tests do I run" back to "all of them". **Two `__init__` files break
+that, both because `[project.scripts]` names them**: `cli/__init__.py` re-exports `main` from
+`cli/app.py`, and `gui/__init__.py` is the bigger exception — `chunksim-gui` is `chunksim.gui:main`,
+so the whole `chunksim-gui` entry point lives there (`build_parser`, `main`, and `allowed_hosts`,
+which is pure and split out so `--host` can be tested without binding a socket). A change to
+`chunksim-gui`'s flags edits `gui/__init__.py`, not a module under it.
 **Those eight docstrings are the directory of this project** — the map from "what am I looking for"
 to "which file".
 
@@ -278,7 +286,7 @@ anywhere in the directory; this file names only the eight.
 | `derive/` | The derivation chain and everything that walks or diffs it. **No module-level mutable state** — `--jobs N` runs them in worker processes, and a cache here breaks that as runs that disagree. |
 | `costing/` | Derivation -> hours: the rate layers, the item walk, and the per-skill models. **`dps_bridge.py` is the only module that may import `osrs_dps`**, and the extra must stay optional. |
 | `runs/` | What a run is: a base state, its rolls, its replay. **A run is self-contained** — stepping one needs no base map, no export and no `derive`. There are **two kinds of run and they price differently**: a roll simulation on the state it ends in, a grind on each roll's own — `timeline.stamp`'s `basis` is what keeps a stored series from being read, or repriced, as the other. A grind is also **resumable**, so `batch._schedule` can break a straggler up and give it the workers a drained pool is wasting; that makes "`--jobs` never changes a result" a live risk rather than a given, and `grind.Frontier` carries the RNG *position* so a split run cannot diverge from an unsplit one. |
-| `cli/` | One module per subcommand family, `add_parser` beside handler, so a flag change edits one file. The only `__init__` carrying code, because `[project.scripts]` names `chunksim.cli:main`. |
+| `cli/` | One module per subcommand family: each exposes `add_arguments`, which calls `subcommands.add_parser` and sits beside its own `_cmd_*` handler, so a flag change edits one file. Carries code in its `__init__` — as `gui/` does, and for the same reason: `[project.scripts]`. |
 | `gui/` | The local server and the browser front end, split by **what each route costs**: `routes_view.py` answers without parsing the export and `routes_derived.py` may not. `resources/` is the front end itself. |
 
 ### Two constraints on the GUI worth knowing before editing it
@@ -391,14 +399,23 @@ that failed the moment it was chosen. A directory cannot be forgotten.
 cache/maps/fetched/<id>.json       # from Firebase; only `chunksim fetch` writes one
 cache/maps/simulated/<batch>/…     # rolled by `chunksim simulate`
 cache/maps/edited/<batch>/…        # made by hand: `chunksim unlock --cache-map`, or the GUI
-cache/reference/                   # chunkinfo, tasks_map, tile_version
+cache/reference/                   # chunkinfo, tasks_map, tile_version, update
                                    # (the wiki blobs live in src/chunksim/heuristics/)
 cache/derived/                     # pipeline.derive + dps_bridge.enrich results, keyed by content
 cache/overrides/<map_id>.json      # heuristic corrections belonging to one map
 cache/players/<map_id>.json        # the account a map is linked to, and any xp set by hand
 cache/assets/                      # section masks, skill icons, CA tier icons
 cache/gui/                         # window.json, settings.json, and the browser profile
+cache/reports/chunkman/latest.json # the completion run's full diagnostic, rewritten every run:
+                                   # the lists test_chunkman_completion.py pins as counts only
 ```
+
+**Moving anything in that tree is a migration, not a rename.** Installs in the field hold the older
+layout, so `cache.migrate_layout` walks `_MOVES` — old path to new — once per process, off the root
+resolvers. It **renames rather than re-fetches** because what is down there is expensive: the export
+is a 10MB download, the wiki rates ~18 requests, and `assets/` fifteen hundred files pulled one at a
+time. A directory relocated without a `_MOVES` entry does not read as an error — it reads as an
+empty cache, and pays for all three again. Add the entry in the same change as the move.
 
 A batch of any computed kind holds `batch.json` (seeds, rolls, `batch_id`, and the payload it rolled
 from) beside one directory per run holding `map.json`, `rolls.json`, `run.json` and `timeline.json`.
@@ -481,8 +498,9 @@ already installs mypy system-wide: an isolated build backend has no mypy, and my
 that relative path resolves. A plain build stays `py3-none-any`; a compiled one is
 `cp314-cp314-linux_x86_64`.
 
-**Measured: 2.72s → 2.13s a roll of a grind simulation, 22%.** Three things about it are not
-negotiable and are pinned by `tests/test_packaging.py`:
+**Measured: 2.72s → 2.13s a roll of a grind simulation, 22%** — and 1.75s with `osrs-dps`
+compiled as well, which the Windows build does. Three things about it are not negotiable and are
+pinned by `tests/test_packaging.py`:
 
 - **`costing/estimate.py` must never be compiled.** It is **3.8x slower** that way — 10.26s a roll
   against 2.71s — and on its own accounted for the whole of a 3.5x regression the first time all
@@ -502,9 +520,11 @@ negotiable and are pinned by `tests/test_packaging.py`:
 monkeypatch `_MAX_AREA_PASSES`, and a compiled module's attributes are read-only.
 
 **The Windows installer ships compiled**, which is where this actually reaches a user.
-`packaging/build.bat` runs the whole build *on a Windows machine*, so the wheel is built there and
-compiles there — `build_windows.py` passes `CHUNKSIM_COMPILE=1` for chunksim's own wheel and not for
-`osrs-dps`'s, whose hot loop is a separate question nobody has measured. `build.bat` checks for
+`packaging/build.bat` runs the whole build *on a Windows machine*, so the wheels are built there and
+compile there — `build_windows.py` sets `CHUNKSIM_COMPILE=1` for this project's wheel and
+`OSRS_DPS_COMPILE=1` for the calculator's, each project deciding its own module list. **Together
+they take a roll of a grind simulation from 2.70s to 1.75s**; `osrs-dps`'s own docs carry what its
+half costs, which is one ULP on `dps` and a reason to prefer it. `build.bat` checks for
 `mypy` and `setuptools` up front rather than letting a missing toolchain surface as a compiler error
 three minutes into the payload, and `/nocompile` is how a build host without a C toolchain says it
 meant to ship interpreted.
