@@ -901,6 +901,24 @@ class _Fixpoint:
         #: `(item, quantity, amortise, trace)` -> this round's answer.
         #: Authoritative once a round completes without reading any belief
         #: that then moved.
+        #:
+        #: **Authoritative for *this* walk only, and it must never be seeded
+        #: from another one.** `_settle` returns a key present here without
+        #: re-deriving it, and a seeded key carries no `readsets` entry, so
+        #: the convergence loop's invalidation cannot reach it either: it is
+        #: frozen for the walk's life. A grind tried exactly this - adopting
+        #: the previous roll's table, since a roll only *adds* providers and
+        #: a route that existed still costs what it cost. That argument is
+        #: true and insufficient. It reasons only about routes that existed,
+        #: where three things move a settled answer between two states:
+        #: a `None` becoming a route (the roll provided the first one), a
+        #: cost falling (a new provider undercut the old), and the
+        #: `Heuristics` the walk spends being recomputed per roll. All three
+        #: are live - the measured failure was Prayer silently losing
+        #: `Wyvern bones (Chaos Altar)`, whose `None` was settled before the
+        #: bones were reachable and served forever after. Worth 27% a roll
+        #: and reverted anyway; a sound seed needs per-key dependencies over
+        #: the reachability gates *and* the rates, which this does not track.
         self.settled: dict[tuple[str, float, bool, bool], _Priced | None] = {}
         #: Last round's answers, consulted only where evaluation closes on
         #: itself. Empty on the first round, which prices a cycle's back-edge
@@ -3577,13 +3595,6 @@ class _MaterialWalk:
     #: bare `DEFAULT_KPH` 150/hr underneath it. `recipe_priced` merges this
     #: back in rather than leaving it walk-only.
     heuristics: Heuristics
-    #: The fixpoint table this walk built, for the *next* walk over the same
-    #: recipe corpus to start from. **Handed out, never stored** - it dies
-    #: with the call chain that made it, so no worker inherits one and
-    #: `--jobs` still cannot change a result. See `material_seconds`.
-    settled: dict[tuple[str, float, bool, bool], _Priced | None] = field(
-        default_factory=dict
-    )
 
 
 def _log_seconds(walk: _Walk, item: str, quantity: float) -> float | None:
@@ -3602,7 +3613,6 @@ def material_seconds(
     made_experience: Mapping[str, tuple[str, float]] | None = None,
     recipes: Mapping[str, Sequence[Recipe]] | None = None,
     material_aliases: Mapping[str, str] = {},
-    inherited: dict[tuple[str, float, bool, bool], _Priced | None] | None = None,
 ) -> _MaterialWalk:
     """Two callables over one item walk: what a material costs, and what
     obtaining it *paid*.
@@ -3645,26 +3655,6 @@ def material_seconds(
         made_experience=made_experience,
         recipes=recipes,
     )
-    # **The previous roll's answers, adopted wholesale.** Measured over 14
-    # consecutive rolls on the real map: of ~1,180 priced items, **not one
-    # answer changed** - a roll only adds providers, so a route that existed
-    # still exists at the same cost and the walk was recomputing an identical
-    # table every step. New items are simply absent from the seed and priced
-    # the ordinary way.
-    #
-    # **Seeded after `material_walk`, which is load-bearing.** `_setup`
-    # replaces the fixpoint when the recipe corpus changes, precisely so
-    # answers cached against one corpus are never served against another;
-    # seeding earlier would hand the reset a table it then threw away, and
-    # seeding a *different* corpus's answers would be the bug that reset
-    # exists to prevent. The corpus is fixed across a grind, so the seed is
-    # only ever this walk's own kind.
-    #
-    # Unproven and therefore opt-in, exactly as `pipeline.derive`'s area carry
-    # is: `runs/grind.py` re-prices the state its leg ends on from cold and
-    # refuses the leg if the two disagree.
-    if inherited:
-        walk.fixpoint.settled.update(inherited)
     memo: dict[tuple[str, float], _Priced | None] = {}
 
     def priced_for(item: str, quantity: float) -> _Priced | None:
@@ -3707,12 +3697,7 @@ def material_seconds(
         found = priced_for(item, quantity)
         return None if found is None else found.hours * 3600.0
 
-    return _MaterialWalk(
-        seconds=seconds,
-        experience=experience,
-        heuristics=walk.heuristics,
-        settled=walk.fixpoint.settled,
-    )
+    return _MaterialWalk(seconds=seconds, experience=experience, heuristics=walk.heuristics)
 
 
 def estimate(

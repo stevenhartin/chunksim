@@ -786,8 +786,6 @@ def recipe_priced(
     *,
     root: Path | None = None,
     reference: ReferenceBlobs | None = None,
-    inherited: Any = None,
-    _walked: list[Any] | None = None,
 ) -> tuple[Heuristics, recipe_rates.RecipeCoverage]:
     """`heuristics` with a rate computed for every method the recipes reach.
 
@@ -846,8 +844,6 @@ def recipe_priced(
         # challenge for is otherwise unreachable however well the wiki
         # documents it - see `estimate._recipe_hours`.
         recipes=recipes,
-        # The previous roll's item table - see `estimate.material_seconds`.
-        inherited=inherited,
     )
     # **Fold the walk's own chest rates back in.** `_setup` derives Larran's
     # and the brimstone chest's own opens-per-hour and hands them to the walk
@@ -958,13 +954,6 @@ def recipe_priced(
         seconds,
     )
     if not recipes:
-        # **The early return reports the carry too.** A map with no recipe
-        # corpus still walked the item graph to get here, and a caller that
-        # gets a table on one path and nothing on the other would carry
-        # forward only sometimes - which is a harder thing to reason about
-        # than either always or never.
-        if _walked is not None:
-            _walked.append((walked.settled, {}))
         return (
             replace(
                 heuristics,
@@ -1150,7 +1139,7 @@ def recipe_priced(
     # **And a method its own page says is not for training keeps no rate**,
     # which is a different claim from "slow" - see `costing/disclaimed.py`.
     rated = disclaimed.refuse(rated, pinned)
-    result = (
+    return (
         replace(
             heuristics,
             training=rated,
@@ -1219,13 +1208,6 @@ def recipe_priced(
         ),
         coverage,
     )
-    if _walked is not None:
-        # **At the return, not at the walk.** `computed_rates` runs after
-        # `material_seconds`, so capturing mid-function hands the caller an
-        # empty table - which a first cut did, and the carry verifier duly
-        # reported as a divergence at step 0, where no carry had happened.
-        _walked.append((walked.settled, result[0].computed))
-    return result
 
 
 def _guardian_experience(recipes: Mapping[str, Any]) -> dict[str, float]:
@@ -2040,9 +2022,7 @@ def priced_heuristics(
     refresh: bool = False,
     reference: ReferenceBlobs | None = None,
     previous: Any = None,
-    inherited: Any = None,
     _carry: list[Any] | None = None,
-    _walked: list[Any] | None = None,
 ) -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
     """Every rate this machine can compute, layered on and cached as one.
 
@@ -2083,8 +2063,7 @@ def priced_heuristics(
 
     def compute() -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
         priced, _ = recipe_priced(
-            state, derived, index, heuristics, levels,
-            root=root, reference=blobs, inherited=inherited, _walked=_walked,
+            state, derived, index, heuristics, levels, root=root, reference=blobs
         )
         coverage: dps_bridge.DpsCoverage | None = None
         if dps_bridge.DPS_AVAILABLE:
@@ -2271,28 +2250,6 @@ def priced_heuristics(
     )
 
 
-@dataclass(frozen=True)
-class _Reuse:
-    """What one priced state offers the next one, and nothing else.
-
-    Both fields are the sanctioned "passed in and returned, never stored"
-    shape: `dps_bridge`'s priced fights, and the item walk's fixpoint table.
-    Bundled rather than returned loose so a third hint later edits one call
-    site instead of every caller's unpacking.
-
-    **None of it is an answer.** A `None` field means "nothing to carry" - the
-    extra is absent, or the enrichment came from cache - and the next step
-    computes that part cold, which is correct rather than merely safe.
-    """
-
-    fights: Any = None
-    settled: Any = None
-    #: What `recipe_priced` computed on this state. Carried so a caller
-    #: verifying the walk carry has the warm half already and pays for one
-    #: cold walk rather than two - see `grind._verify_carried_prices`.
-    computed: Any = None
-
-
 def priced_heuristics_reusing(
     *args: Any, **kwargs: Any
 ) -> tuple[Heuristics, dps_bridge.DpsCoverage | None, Any]:  # noqa: ANN401
@@ -2314,15 +2271,9 @@ def priced_heuristics_reusing(
     then prices from scratch, which is correct rather than merely safe.
     """
     carried: list[Any] = []
-    walked: list[Any] = []
     kwargs["_carry"] = carried
-    kwargs["_walked"] = walked
     heuristics, coverage = priced_heuristics(*args, **kwargs)
-    return heuristics, coverage, _Reuse(
-        fights=carried[0] if carried else None,
-        settled=walked[0][0] if walked else None,
-        computed=walked[0][1] if walked else None,
-    )
+    return heuristics, coverage, (carried[0] if carried else None)
 
 
 @dataclass(frozen=True)

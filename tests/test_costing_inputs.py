@@ -693,13 +693,10 @@ def test_reusing_the_previous_roll_prices_the_same_as_from_scratch(
             state, ids, derived, Heuristics(), {}, digests,
             world=world, refresh=True,
         )
-        warm, _, reuse = priced_heuristics_reusing(
+        warm, _, previous = priced_heuristics_reusing(
             state, ids, derived, Heuristics(), {}, digests,
-            world=world, refresh=True,
-            previous=None if previous is None else previous.fights,
-            inherited=None if previous is None else previous.settled,
+            world=world, refresh=True, previous=previous,
         )
-        previous = reuse
 
         assert warm.monsters == cold.monsters, f"diverged at {len(ids)} chunks"
         assert warm.slayer == cold.slayer
