@@ -4187,3 +4187,39 @@ class TestAGatedKillIsPricedAsOne:
         gate = TaskGate(task="Hydras", place="Karuulm Slayer Dungeon")
         assert gate.task == "Hydras"
         assert gate.place == "Karuulm Slayer Dungeon"
+
+
+@pytest.mark.real_export
+def test_the_pooled_herb_scan_matches_asking_one_herb_at_a_time(
+    real_state: tuple[Any, dict[str, bool]], real_derived: Any, real_export: ChunkInfo
+) -> None:
+    """**`_pooled_yields` is `_drop_rates`' second component, in one scan**, and
+    the two must not drift apart.
+
+    It exists because the herb pool asked every (provider, herb) pair
+    separately and re-read every drop source per herb. Two routes to one answer
+    is the shape that drifts silently here: a pool that quietly loses a
+    provider reads as a slower Herblore, never as an error. So this asserts
+    them equal over the real export, for every provider, rather than sampling.
+    """
+    from chunksim.costing import herbs
+    from chunksim.costing.estimate import _drop_rates, _pooled_yields, material_walk
+    from chunksim.derive.search import build_world_index
+
+    state, _ = real_state
+    heuristics, _scraped = load_heuristics(state.chunk_info)
+    walk = material_walk(
+        state, real_derived, build_world_index(real_export), heuristics
+    )
+    grimy = herbs.herb_items(real_derived.source_index.items)
+    assert grimy, "the real map reaches no herbs; this asserts nothing"
+    wanted = frozenset(grimy)
+
+    checked = 0
+    for provider in walk.available:
+        pooled = _pooled_yields(walk, provider, wanted)
+        for herb in grimy:
+            one = (_drop_rates(walk, provider, herb) or (0.0, 0.0))[1]
+            assert pooled.get(herb, 0.0) == one, (provider, herb)
+            checked += 1
+    assert checked, "no provider was walked"

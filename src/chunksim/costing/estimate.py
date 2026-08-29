@@ -1213,6 +1213,66 @@ def _drop_rates(walk: _Walk, monster: str, item: str) -> tuple[float, float] | N
     return best
 
 
+def _pooled_yields(
+    walk: _Walk, monster: str, wanted: frozenset[str]
+) -> dict[str, float]:
+    """`{item: the best yield one kill of `monster` pays}`, over `wanted`.
+
+    **`_drop_rates`' second component, asked for many items in one scan**, and
+    it must stay exactly that: `tests/test_estimate.py` pins the two against
+    each other over the real export for every provider the herb pool walks
+    rather than trusting this to keep mirroring it by inspection. A pool that
+    quietly loses a provider reads as a slower Herblore, never as an error.
+
+    Asked one item at a time the same answer is `len(wanted)` full scans of
+    every drop source. `herbs.pooled_rate` asks about every grimy herb the map
+    reaches, which was 65% of the walk's `_drop_rates` calls and 7.1M
+    `_mapping` calls a roll to arrive where one scan arrives. Intersecting
+    each nested table's own keys with `wanted` keeps the inner loop
+    proportional to the table rather than to the herb list.
+
+    **It does not fill `_drop_rates`' memo, though it could.** Seeding all
+    `len(wanted)` pairs a provider - most of them the `None` that says the
+    monster drops no such herb - costs more in dict writes than the hits it
+    buys, because no other caller asks about herbs: measured 3.61s a roll
+    against 3.56s for returning the yields alone.
+    """
+    best: dict[str, float] = {}
+    for source in (walk.chunk_info.drops, *walk.skill_tables):
+        for name, quantities in _mapping(source, monster).items():
+            if not isinstance(quantities, dict):
+                continue
+            # **A row is never read out of its own table.** That is
+            # `_drop_rates`' `direct` branch: it short-circuits the table
+            # lookup, so an item both named by a row and listed inside that
+            # row's table takes the undiluted chance, never the diluted one.
+            table = walk.tables.get(name)
+            nested = table if isinstance(table, dict) else None
+            inner: list[tuple[str, float]] = []
+            if nested is not None:
+                for item in wanted.intersection(nested):
+                    if item == name:
+                        continue
+                    within = _table_probability(nested, item, walk.heuristics)
+                    if within is not None:
+                        inner.append((item, within))
+            direct = name in wanted
+            if not direct and not inner:
+                continue
+            for count, raw in quantities.items():
+                chance = _probability(str(raw), walk.heuristics)
+                if chance is None:
+                    continue
+                stack = parse_quantity(str(count)) or 1.0
+                if direct and chance * stack > best.get(name, 0.0):
+                    best[name] = chance * stack
+                for item, within in inner:
+                    found = chance * within * stack
+                    if found > best.get(item, 0.0):
+                        best[item] = found
+    return best
+
+
 def _table_probability(
     table: dict[str, Any] | None, item: str, heuristics: Heuristics
 ) -> float | None:
@@ -3513,10 +3573,26 @@ def _setup(
         patches = herbs.patch_count(
             world.entity_locations("Herb patch"), expanded, derived.reachable_sections
         )
+        # **One scan a provider, not one a (provider, herb) pair.**
+        # `pooled_rate` asks about every grimy herb the map reaches and
+        # `_drop_rates` answers one item per full read of the drop sources, so
+        # the pool alone was 65% of the walk's `_drop_rates` calls. The first
+        # herb asked of a provider settles all of them into the walk's own
+        # memo; every later herb - and every other caller - reads it.
+        wanted = frozenset(grimy)
+        pooled: dict[str, dict[str, float]] = {}
+
+        def herb_yield(provider: str, herb: str) -> float:
+            table = pooled.get(provider)
+            if table is None:
+                table = _pooled_yields(walk, provider, wanted)
+                pooled[provider] = table
+            return table.get(herb, 0.0)
+
         _, active = herbs.pooled_rate(
             walk.available,
             grimy,
-            lambda provider, herb: (_drop_rates(walk, provider, herb) or (0.0, 0.0))[1],
+            herb_yield,
             lambda provider: heuristics.kills_per_hour(provider).value,
         )
         walk = dataclasses.replace(
