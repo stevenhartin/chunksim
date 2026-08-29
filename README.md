@@ -415,19 +415,35 @@ trade is that the checkout becomes load-bearing — move or delete it and both c
 Before committing:
 
 ```sh
+make check           # compile the extensions, then mypy, then the whole suite
+```
+
+Or the pieces:
+
+```sh
+make compile         # build the mypyc extensions in place (~4.8s when unchanged)
+make test            # the suite, against those extensions
+make interpreted     # drop them and run pure Python instead
 mypy                 # strict type checking; run from the repo root
 .venv/bin/pytest     # whole test suite
 ```
 
-The two are invoked differently on purpose: `mypy` is a *system* install pointed at
+`mypy` and `pytest` are invoked differently on purpose: `mypy` is a *system* install pointed at
 `.venv/bin/python` for stubs, so it needs the repo root and an existing virtualenv, while `pytest`
 comes from the `dev` extra and so isn't on `PATH` at all.
+
+**The development loop runs compiled**, which is what the Windows installer ships and about 18%
+faster per simulated roll (26% with the optional DPS calculator built the same way). A compiled
+module is a `.so` that shadows the `.py` beside it *silently*, so the test suite refuses to start
+while any extension is older than its source, and tells you to `make compile`. Running one test file
+with a bare `.venv/bin/pytest` stays safe for that reason.
 
 Tests that check against a real ~10MB chunkinfo export are opt-in and skipped by default. They compare
 against source-chunk's own recorded answers, which makes them the suite's real correctness signal —
 run them before trusting a change to the derivation modules:
 
 ```sh
+make oracles         # or, spelled out:
 CHUNKSIM_CHUNKINFO=cache/reference/chunkinfo.json CHUNKSIM_MAP_CACHE=1 .venv/bin/pytest
 ```
 

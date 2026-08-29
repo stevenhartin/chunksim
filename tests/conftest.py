@@ -86,6 +86,49 @@ _NO_CACHE = pytest.mark.skip(
 )
 
 
+def _stale_extensions() -> list[str]:
+    """Compiled modules edited since they were built, newest source first.
+
+    A `.so` shadows the `.py` beside it and neither Python nor pytest says so:
+    the stale extension imports cleanly and answers with the old code. That is
+    the one failure this whole arrangement has to make impossible, because a
+    green suite run against code you have just changed is worse than no suite
+    at all.
+
+    Globbed rather than read from `setup.COMPILED`, so an extension left behind
+    by an older module list is caught too - `make clean` is what removes those,
+    and until it runs they are shadowing sources nobody is rebuilding.
+    """
+    package = Path(__file__).resolve().parent.parent / "src" / "chunksim"
+    stale: list[str] = []
+    for built in package.rglob("*.cpython-*.so"):
+        source = built.with_name(f"{built.name.split('.', 1)[0]}.py")
+        if source.exists() and source.stat().st_mtime > built.stat().st_mtime:
+            stale.append(str(source.relative_to(package.parent.parent)))
+    return sorted(stale)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Refuse to run at all while a compiled module is older than its source.
+
+    **The guard the compiled development loop rests on.** `make test` and
+    `make check` rebuild first so this never fires for them; it exists for the
+    bare `.venv/bin/pytest` the docs recommend for a single file, which would
+    otherwise quietly test the last build instead of the working tree.
+
+    A checkout with no extensions - a fresh clone, or after `make clean` - has
+    nothing to be stale, so the interpreted path is untouched.
+    """
+    stale = _stale_extensions()
+    if stale:
+        raise pytest.UsageError(
+            "these sources are newer than the extensions shadowing them, so the "
+            "suite would run the last build rather than your changes:\n  "
+            + "\n  ".join(stale)
+            + "\nrun `make compile` (or `make clean` to go back to interpreted)."
+        )
+
+
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """Skip the opt-in oracles unless their inputs are present.
 

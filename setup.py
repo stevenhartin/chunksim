@@ -5,20 +5,30 @@ because `mypyc` needs `ext_modules`, which is Python rather than TOML, and
 because compiling has to be a *choice* rather than what happens when somebody
 types `pip install`.
 
-### It is off unless you ask
+### It is off unless you ask, and `make` is what asks
 
-`CHUNKSIM_COMPILE=1` turns it on. Nothing else does, and that default is
-load-bearing rather than cautious:
+`CHUNKSIM_COMPILE=1` turns it on. Nothing else does, and a bare
+`pip install` still gets a pure-Python wheel:
 
-- **The development loop is an editable install**, and its whole value is that
-  a Python edit is live immediately (see CLAUDE.md). A compiled module is a
-  `.so` that shadows the `.py` beside it, so a build-on-install would replace
-  "edit, reload the tab" with "edit, rebuild, reload the tab" - and would do it
-  silently, because the stale `.so` still imports.
 - **A pure-Python wheel runs anywhere.** Compiling makes the wheel specific to
   one interpreter and one platform, which is a real cost to pay by accident.
 - **The source stays canonical.** A compiled build is the same code made
   faster; if the two ever disagree the `.py` is right and the build is a bug.
+  `make interpreted` is how you ask the canonical one.
+
+**The development loop compiles, through the `Makefile` rather than through
+the install.** `make compile` builds the extensions in place and every target
+that runs anything depends on it, so `make test`, `make check` and `make
+oracles` all measure what the Windows installer ships.
+
+That is safe only because of the guard, and the guard is the point. A `.so`
+shadows the `.py` beside it **silently** - an edited source that has not been
+rebuilt still imports and still answers, with the old code - so
+`tests/conftest.py` refuses to collect at all while any extension is older
+than its source, naming the files and the fix. Without it a green suite would
+mean nothing after any edit to these six modules. An incremental rebuild is
+~4.8s, which is what makes gating every target on it reasonable; a checkout
+with no extensions has nothing to be stale and runs interpreted as before.
 
 ### What is compiled, and what is deliberately not
 
@@ -27,8 +37,13 @@ than guessed. On a real map, per roll of a grind simulation:
 
 | | |
 |---|---|
-| interpreted | 2.72s |
-| compiled | **2.13s** (-22%) |
+| interpreted | 2.98s |
+| this project compiled | 2.44s (-18%) |
+| `osrs-dps` compiled as well | **2.21s** (-26%) |
+
+`osrs-dps` is a second project with its own `OSRS_DPS_COMPILE=1` and its own
+module list; the Windows installer builds both, and so should a checkout that
+wants the same numbers.
 
 **`costing/estimate.py` is excluded and must stay excluded.** Compiled, it is
 **3.8x slower** - 10.26s a roll against 2.71s - and on its own it accounted for

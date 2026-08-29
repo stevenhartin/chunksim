@@ -317,7 +317,8 @@ rationale lives.
 
 ## Toolchain
 
-Python 3.14.7, mypy, pip (no uv). Run `mypy` and `.venv/bin/pytest` before each commit.
+Python 3.14.7, mypy, pip (no uv). Run `make check` before each commit — it compiles, typechecks and
+runs the suite, in that order, so what is tested is what ships.
 
 **Zero *required* runtime dependencies, deliberately** — `pyproject.toml` has an empty
 `dependencies`, so a new module gets the stdlib and nothing else. `store/derived_cache.py` is the
@@ -367,8 +368,12 @@ chunksim search   QUERY [--type T ...] [--limit N]
 python -m chunksim ...    # same CLI without the console script
 chunksim-gui [--map ID] [--compare ID] [--port N] [--host H] [--allow-host H] [--keep-alive]
          [--no-browser] [--tab] [--timeout S]
+make check                   # the commit gate: compile, mypy, whole suite
+make compile                 # build the mypyc extensions in place (~4.8s incremental)
+make test | oracles | slow   # the suite, the opt-in oracles, and the slow ones
+make interpreted             # drop the extensions and run pure Python
 mypy                         # strict, over src/ and tests/; run from the repo root
-.venv/bin/pytest             # whole suite
+.venv/bin/pytest             # whole suite (refuses while an extension is stale)
 ```
 
 Env vars: `CHUNKSIM_CACHE` (the directory `cache/` is made under), `CHUNKSIM_CHUNKINFO` (an export, or
@@ -498,8 +503,8 @@ already installs mypy system-wide: an isolated build backend has no mypy, and my
 that relative path resolves. A plain build stays `py3-none-any`; a compiled one is
 `cp314-cp314-linux_x86_64`.
 
-**Measured: 2.72s → 2.13s a roll of a grind simulation, 22%** — and 1.75s with `osrs-dps`
-compiled as well, which the Windows build does. Three things about it are not negotiable and are
+**Measured: 2.98s → 2.44s a roll of a grind simulation, 18%** — and 2.21s (26%) with `osrs-dps`
+compiled as well, which the Windows build does and the development loop now does too. Three things about it are not negotiable and are
 pinned by `tests/test_packaging.py`:
 
 - **`costing/estimate.py` must never be compiled.** It is **3.8x slower** that way — 10.26s a roll
@@ -512,12 +517,32 @@ pinned by `tests/test_packaging.py`:
   Here that meant `derived_cache.decode` returning `None` for everything it had just written, with
   nothing else complaining. `model/pickling.py` is the fix and the explanation; any class added to a
   compiled module that crosses a pickle needs its `__reduce__`.
-- **It is off by default because the development loop depends on that.** A `.so` shadows the `.py`
-  beside it, so a build-on-install would turn "edit, reload the tab" into "edit, rebuild, reload the
-  tab" — silently, since the stale extension still imports and still answers.
+- **A `.so` shadows the `.py` beside it, silently** — an edited source that has not been rebuilt
+  still imports and still answers, with the old code. That is why it stays off for a plain
+  `pip install`, and why the compiled development loop is only safe with the guard below.
 
 `derive/pipeline.py` is excluded for an unrelated reason worth keeping apart: three tests
 monkeypatch `_MAX_AREA_PASSES`, and a compiled module's attributes are read-only.
+
+**The development loop compiles, and `make` is the whole interface to it.** `make compile` builds
+the extensions in place; `make test`, `make check`, `make oracles` and `make slow` all depend on it,
+so what runs is what the Windows installer ships. **`make interpreted` drops the extensions and runs
+pure Python** — reach for it when a failure could be mypyc's rather than yours, because the `.py` is
+canonical and a disagreement is a compiler bug, not an answer.
+
+**`tests/conftest.py` refuses to collect while any extension is older than its source**, naming the
+files and the fix. That guard is what makes leaving compilation on safe: without it a green suite
+would mean nothing after any edit to the six compiled modules, since the stale `.so` answers
+happily. A bare `.venv/bin/pytest` is still the way to run one file — the guard is what protects it.
+**`make compile` stamps the built extensions afterwards**, because mypyc rebuilds on source
+*content*: a source whose mtime moved without its bytes changing is correctly skipped, and would
+otherwise sit permanently newer than the extension that already matches it, with the guard refusing
+to run and another `make compile` unable to clear it.
+
+**`osrs-dps` compiles separately and the numbers assume it has.** It carries its own
+`OSRS_DPS_COMPILE=1` and its own module list; `make` here cannot reach into another checkout, so
+that build is run by hand (`cd ../osrs-dps && OSRS_DPS_COMPILE=1 python3 setup.py build_ext
+--inplace`) and is worth another 8 points on a roll.
 
 **The Windows installer ships compiled**, which is where this actually reaches a user.
 `packaging/build.bat` runs the whole build *on a Windows machine*, so the wheels are built there and
@@ -631,6 +656,8 @@ CHUNKSIM_CHUNKINFO=cache/reference/chunkinfo.json CHUNKSIM_MAP_CACHE=1 .venv/bin
 CHUNKSIM_CHUNKINFO=… CHUNKSIM_MAP_CACHE=1 CHUNKSIM_SLOW_ORACLES=1 .venv/bin/pytest            # + the slow ones
 ```
 
+`make oracles` and `make slow` are those two lines with the extensions rebuilt first.
+
 Run those before trusting a change to `sections`/`sources`/`challenges`/`bis`/`active_tasks`/
 `other_tasks`, and **treat a failure as a bug in this code rather than a stale oracle.** Do not report
 a green `.venv/bin/pytest` as a change being verified.
@@ -654,6 +681,11 @@ a green `.venv/bin/pytest` as a change being verified.
   developer's real cache — not a failing test but a passing one computed against the wrong map.
   `conftest.cached_map` patches both. Pass `cache.py`'s `root` a `tmp_path`, and any test calling
   `cache.read_chunkinfo()` without an explicit `override` must take the `no_ambient_chunkinfo` fixture.
+- **A stale extension refuses to run.** `conftest.pytest_configure` compares each `*.so` against the
+  `.py` it shadows and raises rather than collecting, because a compiled module that is behind its
+  source imports and answers silently — a green suite that means nothing. `make compile` clears it;
+  `make clean` goes back to interpreted. This is what makes a bare `.venv/bin/pytest` on one file
+  safe to keep recommending.
 - **`conftest.py` holds what more than one file needs and nothing else** — the markers, `project`,
   `cached_map`, `simulatable`, `derived_entries`, `no_ambient_chunkinfo`, and the **session-scoped**
   `real_export`/`real_state`/`real_derived`, which share one `pipeline.derive` across the oracles and
@@ -678,9 +710,10 @@ a green `.venv/bin/pytest` as a change being verified.
   new subcommand, a renamed flag or a changed default lands in three places: the module docstring
   (why), this file (what spans modules) and the README (what a user types). It is the one that
   drifts, because nothing in the test suite reads it.
-- Run `mypy` and `.venv/bin/pytest`, then commit and push per change. Tracks `main` over SSH.
+- Run `make check` (compile, `mypy`, `.venv/bin/pytest`), then commit and push per change. Tracks
+  `main` over SSH.
 - **This line is the standing authorization, so commit and push without asking first.** Run `mypy`
-  and `.venv/bin/pytest` green, then `git commit` and `git push` after every change (a discrete
+  `make check` green, then `git commit` and `git push` after every change (a discrete
   task or fix, not every intermediate edit) — do not stop to confirm the commit or the push
   themselves, only the git-safety cases (force-push, history rewrite, `--no-verify`, and the like)
   still need it. **A push that fails is left alone, not retried or investigated** — a rejected
