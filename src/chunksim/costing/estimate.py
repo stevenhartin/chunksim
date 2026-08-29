@@ -471,12 +471,18 @@ def _location_reachable(walk: _Walk, location: str) -> bool:
     `derive/sections.py`'s own fixed point never inserts it there because
     unlocking a chunk makes it reachable for free.
     """
+    known = walk.open_locations.get(location)
+    if known is not None:
+        return known
     chunk, _, section = location.partition("-")
     if chunk not in walk.unlocked_chunks:
-        return False
-    if not section or section == "0":
-        return True
-    return bool(walk.reachable_sections.get(chunk, {}).get(section))
+        open_ = False
+    elif not section or section == "0":
+        open_ = True
+    else:
+        open_ = bool(walk.reachable_sections.get(chunk, {}).get(section))
+    walk.open_locations[location] = open_
+    return open_
 
 
 def _shop_reachable(walk: _Walk, shop: str) -> bool:
@@ -490,10 +496,15 @@ def _shop_reachable(walk: _Walk, shop: str) -> bool:
     (Malignius Mortifer, for the one hand-added Magic secateurs route), so an
     empty location set means "nothing to check against", not "unreachable".
     """
+    known = walk.open_shops.get(shop)
+    if known is not None:
+        return known
     locations = walk.world.locations.get("Shop", {}).get(shop)
-    if not locations:
-        return True
-    return any(_location_reachable(walk, location) for location in locations)
+    open_ = True
+    if locations:
+        open_ = any(_location_reachable(walk, location) for location in locations)
+    walk.open_shops[shop] = open_
+    return open_
 
 
 def _spawn_block(chunk_info: ChunkInfo, location: str) -> Mapping[str, Any]:
@@ -1090,6 +1101,15 @@ class _Walk:
     kill_facts: dict[
         str, tuple[tuple["_KillFact", ...], tuple[tuple[int, str, str], ...]]
     ] = field(default_factory=dict)
+    #: `location -> is it open`, and `shop -> is any of its locations open`.
+    #: Both are pure in this walk's own reachability, which does not move once
+    #: it is built - and both sit inside `_route_hours`, which `_best_route`
+    #: calls three million times a roll. Measured there: 815,690 shop checks,
+    #: each re-walking that shop's location list into 1,031,797 location
+    #: checks, for a few hundred distinct answers. Per-call caches on a
+    #: stack-local object, exactly as `drop_rates` and `kill_facts` above are.
+    open_locations: dict[str, bool] = field(default_factory=dict)
+    open_shops: dict[str, bool] = field(default_factory=dict)
     #: item -> its `task:` sources with their positions **and their
     #: challenges**, so the live half of the split loop neither re-filters
     #: `item_sources` nor re-reads the export per call - the challenge lookup
